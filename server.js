@@ -69,7 +69,7 @@ app.post('/api/lobbies', (req, res) => {
       return source && name && { id: `r${index + 1}-c${carIndex + 1}`, source, sourceUrl: url, name, price, images, thumbnail };
     });
     if (cars.some((car) => !car)) return res.status(400).json({ error: `Round ${index + 1}: add a car name and use full links from mudah.my or carlist.my only.` });
-    rounds.push({ id: `round-${index + 1}`, title: String(item.title || `Round ${index + 1}`).slice(0, 80), cars, votes: Object.fromEntries(cars.map((car) => [car.id, 0])), phase: 'showcase', showcase: { carIndex: 0, imageIndex: 0 } });
+    rounds.push({ id: `round-${index + 1}`, title: String(item.title || `Round ${index + 1}`).slice(0, 80), cars, votes: Object.fromEntries(cars.map((car) => [car.id, 0])), voters: [], phase: 'showcase', showcase: { carIndex: 0, imageIndex: 0 } });
   }
   const store = readStore();
   const id = `lobby-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -110,14 +110,17 @@ app.post('/api/lobbies/:id/next', (req, res) => {
 });
 
 app.post('/api/lobbies/:id/rounds/:roundId/vote', (req, res) => {
-  const { carId } = req.body;
+  const { carId, voterId } = req.body;
+  if (typeof voterId !== 'string' || !voterId.trim()) return res.status(400).json({ error: 'Missing voter id' });
   const store = readStore();
   const lobby = store.lobbies.find((item) => item.id === req.params.id);
   const round = lobby?.rounds.find((item) => item.id === req.params.roundId);
   if (!round) return res.status(404).json({ error: 'Round not found' });
+  round.voters ??= [];
   if (round.phase !== 'voting') return res.status(409).json({ error: 'Voting has not started yet' });
   if (!round.cars.some((car) => car.id === carId)) return res.status(400).json({ error: 'Invalid car' });
-  round.votes[carId] += 1; writeStore(store); res.json({ votes: round.votes });
+  if (round.voters.includes(voterId)) return res.status(409).json({ error: 'You have already voted in this round.' });
+  round.votes[carId] += 1; round.voters.push(voterId); writeStore(store); res.json({ votes: round.votes });
 });
 
 function currentShowcase(lobby) {

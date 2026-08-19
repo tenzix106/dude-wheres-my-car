@@ -35,6 +35,16 @@ const listingAddress = (url) => {
     return url;
   }
 };
+function getVoterId() {
+  let id = localStorage.getItem("voterId");
+  if (!id) {
+    id = crypto.randomUUID
+      ? crypto.randomUUID()
+      : `v-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem("voterId", id);
+  }
+  return id;
+}
 const carFields = () =>
   `<div class="car-link"><label>Car name <input class="car-name" required maxlength="80" placeholder="e.g. 2020 Mazda MX-5" /></label><label>Price <input class="car-price" maxlength="40" placeholder="Optional · e.g. RM 154,000" /></label><label>Listing link <input required type="url" placeholder="https://www.mudah.my/... or carlist.my/..." /></label><label class="image-picker">Showcase photos <input class="image-input" type="file" accept="image/*" multiple /></label><div class="paste-zone" tabindex="0" role="button">Click here, then paste an image</div><p class="image-help">Select or paste up to 8 images, then arrange them below.</p><div class="image-order" aria-live="polite"></div></div>`;
 const roundFields = (number) =>
@@ -117,6 +127,7 @@ function bindImagePickers() {
     input.dataset.bound = "yes";
     const container = input.closest(".car-link");
     container.images = [];
+    container.thumbnail = null;
     input.addEventListener("change", async () => {
       await addImages(container, [...input.files]);
       input.value = "";
@@ -149,6 +160,7 @@ async function addImages(container, files) {
     ),
   );
   container.images.push(...data);
+  if (!container.thumbnail) container.thumbnail = container.images[0];
   renderImageOrder(container);
 }
 function renderImageOrder(container) {
@@ -156,15 +168,23 @@ function renderImageOrder(container) {
   const images = container.images || [];
   order.innerHTML =
     images
-      .map(
-        (image, index) =>
-          `<div class="image-thumb">${index === 0 ? '<span class="thumb-badge">Thumbnail</span>' : ""}<img src="${image}" alt="Selected showcase image ${index + 1}" /><span class="thumb-index">${index + 1}</span><div class="image-thumb-actions"><button type="button" data-move="left" data-index="${index}" aria-label="Move image ${index + 1} left" ${index === 0 ? "disabled" : ""}>←</button><button type="button" data-remove-image="${index}" aria-label="Remove image ${index + 1}" title="Remove image">×</button><button type="button" data-move="right" data-index="${index}" aria-label="Move image ${index + 1} right" ${index === images.length - 1 ? "disabled" : ""}>→</button></div></div>`,
-      )
+      .map((image, index) => {
+        const isThumb = container.thumbnail === image;
+        return `<div class="image-thumb"><button type="button" class="thumb-toggle ${isThumb ? "active" : ""}" data-set-thumb="${index}" title="${isThumb ? "This is the thumbnail" : "Set as thumbnail"}" aria-pressed="${isThumb}">${isThumb ? "★ Thumbnail" : "☆ Set thumbnail"}</button><div class="thumb-img-wrap"><img src="${image}" alt="Selected showcase image ${index + 1}" /><span class="thumb-index">${index + 1}</span></div><div class="image-thumb-actions"><button type="button" data-move="left" data-index="${index}" aria-label="Move image ${index + 1} left" ${index === 0 ? "disabled" : ""}>←</button><button type="button" data-remove-image="${index}" aria-label="Remove image ${index + 1}" title="Remove image">×</button><button type="button" data-move="right" data-index="${index}" aria-label="Move image ${index + 1} right" ${index === images.length - 1 ? "disabled" : ""}>→</button></div></div>`;
+      })
       .join("") ||
     "<p>No images selected — the listing card will be shown instead.</p>";
+  order.querySelectorAll("[data-set-thumb]").forEach((button) =>
+    button.addEventListener("click", () => {
+      container.thumbnail = images[Number(button.dataset.setThumb)];
+      renderImageOrder(container);
+    }),
+  );
   order.querySelectorAll("[data-remove-image]").forEach((button) =>
     button.addEventListener("click", () => {
-      images.splice(Number(button.dataset.removeImage), 1);
+      const removed = images.splice(Number(button.dataset.removeImage), 1)[0];
+      if (container.thumbnail === removed)
+        container.thumbnail = images[0] || null;
       renderImageOrder(container);
     }),
   );
@@ -196,7 +216,7 @@ async function createLobby(event) {
         (container) => container.images || [],
       ),
       thumbnails: [...field.querySelectorAll(".car-link")].map(
-        (container) => container.images?.[0] || null,
+        (container) => container.thumbnail || null,
       ),
     }),
   );
@@ -281,7 +301,8 @@ function lobbyPage() {
   } else if (current.phase !== "voting") {
     showcasePage(current);
   } else {
-    app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · VOTING OPEN</p><h1>${escapeHtml(current.title)}</h1><p>Pick the listing you’d rather take home.</p></section><section class="listing-arena">${current.cars.map((car, index) => `<div>${carDetails(car)}${listingFrame(car)}${listingLink(car)}${isHost ? "" : `<button class="vote-button ${index ? "blue-button" : ""}" data-car="${car.id}">I’d take this one</button>`}</div>`).join('<span class="versus">OR</span>')}</section><section class="game-results" style="margin:48px auto 58px"><p class="eyebrow">LIVE VOTE</p>${scoreBoard(current)}<p id="vote-message" class="small"></p>${isHost ? `<button id="next-round" class="secondary">${lobby.currentRound === lobby.rounds.length - 1 ? "Finish game" : "Next round →"}</button>` : ""}</section>`;
+    const hasVoted = current.voters?.includes(getVoterId());
+    app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · VOTING OPEN</p><h1>${escapeHtml(current.title)}</h1><p>Pick the listing you’d rather take home.</p></section><section class="listing-arena">${current.cars.map((car, index) => `<div>${carDetails(car)}${listingFrame(car)}${listingLink(car)}${isHost || hasVoted ? "" : `<button class="vote-button ${index ? "blue-button" : ""}" data-car="${car.id}">I’d take this one</button>`}</div>`).join('<span class="versus">OR</span>')}</section><section class="game-results" style="margin:48px auto 58px"><p class="eyebrow">LIVE VOTE</p>${scoreBoard(current)}<p id="vote-message" class="small">${!isHost && hasVoted ? "You’ve already voted in this round." : ""}</p>${isHost ? `<button id="next-round" class="secondary">${lobby.currentRound === lobby.rounds.length - 1 ? "Finish game" : "Next round →"}</button>` : ""}</section>`;
     document
       .querySelectorAll("[data-car]")
       .forEach((button) =>
@@ -303,9 +324,25 @@ async function post(url, body) {
   await loadLobby();
 }
 async function vote(roundId, carId) {
-  document.querySelector("#vote-message").textContent = "Recording your vote…";
-  await post(`/api/lobbies/${lobby.id}/rounds/${roundId}/vote`, { carId });
-  document.querySelector("#vote-message").textContent = "Vote recorded.";
+  const message = document.querySelector("#vote-message");
+  message.textContent = "Recording your vote…";
+  try {
+    const response = await fetch(
+      `/api/lobbies/${lobby.id}/rounds/${roundId}/vote`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ carId, voterId: getVoterId() }),
+      },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Error(data.error || "Could not record your vote.");
+    message.textContent = "Vote recorded.";
+  } catch (error) {
+    message.textContent = error.message;
+  }
+  await loadLobby();
 }
 async function loadLobby() {
   const response = await fetch(`/api/lobbies/${encodeURIComponent(lobbyId)}`);
