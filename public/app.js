@@ -63,16 +63,25 @@ function bindRoundControls() {
     button.dataset.bound = "yes";
     button.addEventListener("click", () => {
       const rounds = document.querySelector("#rounds");
-      if (rounds.children.length === 1) {
-        document.querySelector("#form-message").textContent =
-          "A game needs at least one round.";
-        return;
-      }
+      if (rounds.children.length === 1) return;
       button.closest(".round-fields").remove();
       [...rounds.children].forEach((round, index) => {
         round.querySelector("legend").textContent = `ROUND ${index + 1}`;
       });
+      refreshRoundControls();
     });
+  });
+  refreshRoundControls();
+}
+function refreshRoundControls() {
+  const rounds = document.querySelectorAll(".round-fields");
+  const atMinimum = rounds.length <= 1;
+  rounds.forEach((round) => {
+    const button = round.querySelector(".remove-round");
+    button.disabled = atMinimum;
+    button.title = atMinimum
+      ? "A game needs at least one round"
+      : "Remove this round";
   });
 }
 function bindPreviews() {
@@ -108,7 +117,6 @@ function bindImagePickers() {
     input.dataset.bound = "yes";
     const container = input.closest(".car-link");
     container.images = [];
-    container.thumbnail = null;
     input.addEventListener("change", async () => {
       await addImages(container, [...input.files]);
       input.value = "";
@@ -150,20 +158,13 @@ function renderImageOrder(container) {
     images
       .map(
         (image, index) =>
-          `<div class="image-thumb"><img src="${image}" alt="Selected showcase image ${index + 1}" /><span>${index + 1}</span><button type="button" data-thumbnail="${index}" aria-label="Use image ${index + 1} as the card thumbnail" title="Use as card thumbnail" style="position:absolute;right:3px;top:3px;width:24px;background:${container.thumbnail === image ? "#d3f36b" : "#fff"}">${container.thumbnail === image ? "★" : "☆"}</button><button type="button" data-remove-image="${index}" aria-label="Remove image ${index + 1}" title="Remove image">×</button><button type="button" data-move="left" data-index="${index}" ${index === 0 ? "disabled" : ""}>←</button><button type="button" data-move="right" data-index="${index}" ${index === images.length - 1 ? "disabled" : ""}>→</button></div>`,
+          `<div class="image-thumb">${index === 0 ? '<span class="thumb-badge">Thumbnail</span>' : ""}<img src="${image}" alt="Selected showcase image ${index + 1}" /><span class="thumb-index">${index + 1}</span><div class="image-thumb-actions"><button type="button" data-move="left" data-index="${index}" aria-label="Move image ${index + 1} left" ${index === 0 ? "disabled" : ""}>←</button><button type="button" data-remove-image="${index}" aria-label="Remove image ${index + 1}" title="Remove image">×</button><button type="button" data-move="right" data-index="${index}" aria-label="Move image ${index + 1} right" ${index === images.length - 1 ? "disabled" : ""}>→</button></div></div>`,
       )
       .join("") ||
     "<p>No images selected — the listing card will be shown instead.</p>";
-  order.querySelectorAll("[data-thumbnail]").forEach((button) =>
-    button.addEventListener("click", () => {
-      container.thumbnail = images[Number(button.dataset.thumbnail)];
-      renderImageOrder(container);
-    }),
-  );
   order.querySelectorAll("[data-remove-image]").forEach((button) =>
     button.addEventListener("click", () => {
-      const removed = images.splice(Number(button.dataset.removeImage), 1)[0];
-      if (container.thumbnail === removed) container.thumbnail = null;
+      images.splice(Number(button.dataset.removeImage), 1);
       renderImageOrder(container);
     }),
   );
@@ -195,7 +196,7 @@ async function createLobby(event) {
         (container) => container.images || [],
       ),
       thumbnails: [...field.querySelectorAll(".car-link")].map(
-        (container) => container.thumbnail || null,
+        (container) => container.images?.[0] || null,
       ),
     }),
   );
@@ -261,6 +262,13 @@ function scoreBoard(round) {
     })
     .join("")}</div>`;
 }
+function finalScoreCard(round, car) {
+  const total =
+    Object.values(round.votes).reduce((sum, count) => sum + count, 0) || 1;
+  const votes = round.votes[car.id] || 0;
+  const pct = Math.round((votes / total) * 100);
+  return `<div class="score">${carDetails(car)}${listingFrame(car)}${listingLink(car)}<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:18px"><span style="font-size:13px">${votes} vote${votes === 1 ? "" : "s"}</span><b style="font-family:'DM Mono',monospace">${pct}%</b></div><div class="bar"><i style="width:${pct}%"></i></div></div>`;
+}
 function lobbyPage() {
   const current = lobby.rounds[lobby.currentRound];
   if (lobby.status === "lobby") {
@@ -269,7 +277,7 @@ function lobbyPage() {
       .querySelector("#start-game")
       ?.addEventListener("click", () => post(`/api/lobbies/${lobby.id}/start`));
   } else if (lobby.status === "complete") {
-    app.innerHTML = `<section class="lobby-hero"><p class="eyebrow">GAME OVER</p><h1>The room has spoken.</h1><p>${escapeHtml(lobby.title)} is complete. Here are the final round results.</p></section><section class="final-rounds">${lobby.rounds.map((round, index) => `<div><h2>${index + 1}. ${escapeHtml(round.title)}</h2>${scoreBoard(round)}</div>`).join("")}</section>`;
+    app.innerHTML = `<section class="lobby-hero"><p class="eyebrow">GAME OVER</p><h1>The room has spoken.</h1><p>${escapeHtml(lobby.title)} is complete. Here are the final round results.</p></section><section class="final-rounds">${lobby.rounds.map((round, index) => `<div><h2>${index + 1}. ${escapeHtml(round.title)}</h2><div class="scores">${round.cars.map((car) => finalScoreCard(round, car)).join("")}</div></div>`).join("")}</section>`;
   } else if (current.phase !== "voting") {
     showcasePage(current);
   } else {
