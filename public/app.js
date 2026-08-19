@@ -218,7 +218,7 @@ async function createLobby(event) {
 }
 function listingFrame(car) {
   return car.thumbnail
-    ? `<article class="listing-card" style="border:0;background:transparent"><img src="${car.thumbnail}" alt="${escapeHtml(car.name || car.source)} listing thumbnail" style="display:block;width:100%;height:260px;object-fit:cover;background:#182128" /></article>`
+    ? `<article class="listing-card" style="border:2px solid var(--ink);background:#182128"><img src="${car.thumbnail}" alt="${escapeHtml(car.name || car.source)} listing thumbnail" style="display:block;width:100%;height:auto;max-height:340px;object-fit:contain;background:#182128" /></article>`
     : `<article class="listing-card" style="min-height:180px;display:grid;place-items:center"><span>No showcase image</span></article>`;
 }
 function carDetails(car) {
