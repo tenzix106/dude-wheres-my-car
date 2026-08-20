@@ -50,7 +50,9 @@ header {
   background: var(--surface);
   color: var(--ink);
   padding: 7px 9px;
-  font: 11px "DM Mono", monospace;
+  font:
+    11px "DM Mono",
+    monospace;
   cursor: pointer;
 }
 .theme-toggle:hover {
@@ -130,7 +132,7 @@ footer,
 }
 .player-total {
   font:
-    11px "DM Mono",
+    15px "DM Mono",
     monospace;
   color: var(--muted);
   white-space: nowrap;
@@ -969,10 +971,10 @@ footer p {
 }
 [data-theme="dark"] .image-input::file-selector-button,
 [data-theme="dark"] .image-input::-webkit-file-upload-button {
-[data-theme="dark"] .image-thumb .thumb-index {
-  background: #0d1216;
-  color: #f2eee6;
-}
+  [data-theme="dark"] .image-thumb .thumb-index {
+    background: #0d1216;
+    color: #f2eee6;
+  }
   background: #0d1216;
   color: #f2eee6;
 }

@@ -92,7 +92,7 @@ let lightboxTitle = "";
 let lightboxShowcase = false;
 function renderLightbox() {
   lightboxImg.src = lightboxImages[lightboxIndex];
-  lightboxCaption.innerHTML = `<span class="lightbox-title">${lightboxTitle ? escapeHtml(lightboxTitle) : ""}</span><span class="lightbox-photo-count">Photo ${lightboxIndex + 1} of ${lightboxImages.length}</span>`;
+  // lightboxCaption.innerHTML = `<span class="lightbox-title">${lightboxTitle ? escapeHtml(lightboxTitle) : ""}</span><span class="lightbox-photo-count">Photo ${lightboxIndex + 1} of ${lightboxImages.length}</span>`;
   lightboxPrevBtn.disabled = lightboxIndex === 0;
   lightboxNextBtn.disabled = lightboxIndex === lightboxImages.length - 1;
   const state = lobby?.rounds[lobby.currentRound]?.showcase;
@@ -100,7 +100,8 @@ function renderLightbox() {
   lightboxCarNextBtn.hidden = !lightboxShowcase;
   if (lightboxShowcase && state) {
     lightboxCarPrevBtn.disabled = state.carIndex === 0;
-    lightboxCarNextBtn.disabled = state.carIndex === lobby.rounds[lobby.currentRound].cars.length - 1;
+    lightboxCarNextBtn.disabled =
+      state.carIndex === lobby.rounds[lobby.currentRound].cars.length - 1;
   }
 }
 function openLightbox(images, startIndex, title, showcase = false) {
@@ -123,7 +124,11 @@ function syncLightboxToShowcase() {
   const state = round?.showcase;
   const car = state && round.cars[state.carIndex];
   if (!car) return;
-  const images = car.images?.length ? car.images : car.thumbnail ? [car.thumbnail] : [];
+  const images = car.images?.length
+    ? car.images
+    : car.thumbnail
+      ? [car.thumbnail]
+      : [];
   if (!images.length) return;
   lightboxImages = images;
   lightboxIndex = Math.min(state.imageIndex, images.length - 1);
@@ -469,7 +474,7 @@ function lobbyPage() {
   const current = lobby.rounds[lobby.currentRound];
   if (lobby.status === "lobby") {
     const joinUrl = `${location.origin}/lobby/${encodeURIComponent(lobby.id)}`;
-    app.innerHTML = `<section class="lobby-hero"><p class="eyebrow">LOBBY OPEN · ${lobby.rounds.length} ROUND${lobby.rounds.length === 1 ? "" : "S"}</p><h1>${escapeHtml(lobby.title)}</h1><p class="lobby-description">Players scan the code to join. When the gang is assembled, start the showdown. <span class="lobby-player-count" aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} scanned in</span></p></section><section class="lobby-grid"><div class="qr-card"><img src="/api/lobbies/${encodeURIComponent(lobby.id)}/qr" alt="QR code to join this lobby" /><b>SCAN TO JOIN</b><span aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} scanned in</span>${isHost ? '<button type="button" class="secondary" id="copy-link">Copy lobby link</button>' : ""}</div><div class="lobby-details"><div class="lobby-details-head"><p class="eyebrow">UP NEXT</p><span class="lobby-player-count" aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} scanned in</span></div>${lobby.rounds.map((round, index) => `<div class="round-row"><b>${index + 1}</b><span>${escapeHtml(round.title)}</span></div>`).join("")}${isHost ? '<button class="primary" id="start-game">Start game →</button>' : '<p class="wait-note">You’re in. Hang tight for the host to start the game.</p>'}</div></section>`;
+    app.innerHTML = `<section class="lobby-hero"><p class="eyebrow">LOBBY OPEN · ${lobby.rounds.length} ROUND${lobby.rounds.length === 1 ? "" : "S"}</p><h1>${escapeHtml(lobby.title)}</h1><p class="lobby-description">Players scan the code to join. When the gang is assembled, start the showdown.</p></section><section class="lobby-grid"><div class="qr-card"><img src="/api/lobbies/${encodeURIComponent(lobby.id)}/qr" alt="QR code to join this lobby" /><b>SCAN TO JOIN</b><span aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} scanned in</span>${isHost ? '<button type="button" class="secondary" id="copy-link">Copy lobby link</button>' : ""}</div><div class="lobby-details"><div class="lobby-details-head"><p class="eyebrow">UP NEXT</p><span class="lobby-player-count" aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} scanned in</span></div>${lobby.rounds.map((round, index) => `<div class="round-row"><b>${index + 1}</b><span>${escapeHtml(round.title)}</span></div>`).join("")}${isHost ? '<button class="primary" id="start-game">Start game →</button>' : '<p class="wait-note">You’re in. Hang tight for the host to start the game.</p>'}</div></section>`;
     document
       .querySelector("#start-game")
       ?.addEventListener("click", () => post(`/api/lobbies/${lobby.id}/start`));

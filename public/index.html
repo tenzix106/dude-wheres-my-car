@@ -10,26 +10,124 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/favicon-180.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Mono&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell">
-      <header><a class="brand" href="/"><img src="/logo.svg" alt="" width="40" height="40" /><span>DUDE,<br><em>WHERE'S</em> MY CAR?</span></a><div class="header-tools"><button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">Dark mode</button></div></header>
+      <header>
+        <a class="brand" href="/"
+          ><img src="/logo.svg" alt="" width="40" height="40" /><span
+            >DUDE,<br /><em>WHERE'S</em> MY CAR?</span
+          ></a
+        >
+        <div class="header-tools">
+          <button
+            type="button"
+            id="theme-toggle"
+            class="theme-toggle"
+            aria-pressed="false"
+          >
+            Dark mode
+          </button>
+        </div>
+      </header>
       <div id="app"></div>
       <footer>
-        <p class="footer-disclaimer">This web application was developed for the weekly Aurizn Q&amp;A sessions that happens every Monday night!</p>
-        <p>For fun with friends only — not affiliated with, endorsed by, or a replacement for Mudah.my or Carlist.my. Listing links open the original site directly; no listing data, photos, or branding are copied or stored beyond what a host adds themselves.</p>
-        <p class="footer-links">Watch live: <a href="https://www.youtube.com/@BobbyAurizn" target="_blank" rel="noopener">Bobby Ang</a> · <a href="https://www.youtube.com/@ThomasYap" target="_blank" rel="noopener">Thomas Yap</a> · <a href="https://www.youtube.com/@ThanaKrishnan" target="_blank" rel="noopener">Thana</a> · <a href="https://www.youtube.com/@KonWaiLuen" target="_blank" rel="noopener">Kon</a> · <a href="https://www.facebook.com/aurizn/" target="_blank" rel="noopener">Aurizn Facebook</a></p>
+        <p class="footer-disclaimer">
+          This web application was developed for the weekly Aurizn Q&amp;A
+          sessions that happens every Monday night!
+        </p>
+        <p>
+          For fun with friends only — not affiliated with, endorsed by, or a
+          replacement for Mudah.my or Carlist.my. Listing links open the
+          original site directly; no listing data, photos, or branding are
+          copied or stored beyond what a host adds themselves.
+        </p>
+        <p class="footer-links" style="color: var(--muted)">
+          Watch live:
+          <a
+            href="https://www.youtube.com/@BobbyAurizn"
+            target="_blank"
+            rel="noopener"
+            >Bobby Ang</a
+          >
+          ·
+          <a
+            href="https://www.youtube.com/@ThomasYap"
+            target="_blank"
+            rel="noopener"
+            >Thomas Yap</a
+          >
+          ·
+          <a
+            href="https://www.youtube.com/@ThanaKrishnan"
+            target="_blank"
+            rel="noopener"
+            >Thana</a
+          >
+          ·
+          <a
+            href="https://www.youtube.com/@KonWaiLuen"
+            target="_blank"
+            rel="noopener"
+            >Kon</a
+          >
+          ·
+          <a
+            href="https://www.facebook.com/aurizn/"
+            target="_blank"
+            rel="noopener"
+            >Aurizn Facebook</a
+          >
+        </p>
       </footer>
     </main>
     <div id="lightbox" class="lightbox" hidden>
-      <button type="button" id="lightbox-close" class="lightbox-close" aria-label="Close fullscreen">✕ Close</button>
-      <button type="button" id="lightbox-prev" class="lightbox-nav lightbox-prev" aria-label="Previous image">←</button>
+      <button
+        type="button"
+        id="lightbox-close"
+        class="lightbox-close"
+        aria-label="Close fullscreen"
+      >
+        ✕ Close
+      </button>
+      <button
+        type="button"
+        id="lightbox-prev"
+        class="lightbox-nav lightbox-prev"
+        aria-label="Previous image"
+      >
+        ←
+      </button>
       <img id="lightbox-img" alt="" />
-      <button type="button" id="lightbox-next" class="lightbox-nav lightbox-next" aria-label="Next image">→</button>
-      <button type="button" id="lightbox-car-prev" class="lightbox-car-nav lightbox-car-prev" aria-label="Previous car">← Previous car</button>
-      <button type="button" id="lightbox-car-next" class="lightbox-car-nav lightbox-car-next" aria-label="Next car">Next car →</button>
+      <button
+        type="button"
+        id="lightbox-next"
+        class="lightbox-nav lightbox-next"
+        aria-label="Next image"
+      >
+        →
+      </button>
+      <button
+        type="button"
+        id="lightbox-car-prev"
+        class="lightbox-car-nav lightbox-car-prev"
+        aria-label="Previous car"
+      >
+        ← Previous car
+      </button>
+      <button
+        type="button"
+        id="lightbox-car-next"
+        class="lightbox-car-nav lightbox-car-next"
+        aria-label="Next car"
+      >
+        Next car →
+      </button>
       <p id="lightbox-caption" class="lightbox-caption"></p>
     </div>
     <script src="/app.js"></script>
