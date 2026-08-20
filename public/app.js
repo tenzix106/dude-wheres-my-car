@@ -1,13 +1,18 @@
 const app = document.querySelector("#app");
 const lobbyId = location.pathname.match(/^\/lobby\/([^/]+)/)?.[1];
-const isHost = new URLSearchParams(location.search).get("host") === "1";
+// The `host` query param now carries the real per-lobby token issued at
+// creation, not a guessable "1" — the server rejects host actions unless
+// this exact token is sent back on each request.
+const hostToken = new URLSearchParams(location.search).get("host") || "";
+const isHost = Boolean(hostToken);
 let lobby;
 
 const themeToggle = document.querySelector("#theme-toggle");
 function applyTheme(isDark) {
   document.documentElement.dataset.theme = isDark ? "dark" : "light";
   themeToggle?.setAttribute("aria-pressed", String(isDark));
-  if (themeToggle) themeToggle.textContent = isDark ? "Light mode" : "Dark mode";
+  if (themeToggle)
+    themeToggle.textContent = isDark ? "Light mode" : "Dark mode";
 }
 applyTheme(localStorage.getItem("theme") === "dark");
 themeToggle?.addEventListener("click", () => {
@@ -50,13 +55,24 @@ const listingAddress = (url) => {
 };
 function getVoterId() {
   let id = localStorage.getItem("voterId");
+
   if (!id) {
     id = crypto.randomUUID
       ? crypto.randomUUID()
       : `v-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     localStorage.setItem("voterId", id);
   }
+
   return id;
+}
+
+function hasVotedInRound(roundId) {
+  return localStorage.getItem(`voted:${lobbyId}:${roundId}`) === "yes";
+}
+
+function markRoundVoted(roundId) {
+  localStorage.setItem(`voted:${lobbyId}:${roundId}`, "yes");
 }
 const lightbox = document.querySelector("#lightbox");
 const lightboxImg = document.querySelector("#lightbox-img");
@@ -97,7 +113,9 @@ lightboxNextBtn.addEventListener("click", () => {
     renderLightbox();
   }
 });
-document.querySelector("#lightbox-close").addEventListener("click", closeLightbox);
+document
+  .querySelector("#lightbox-close")
+  .addEventListener("click", closeLightbox);
 document.addEventListener("fullscreenchange", () => {
   if (!document.fullscreenElement) lightbox.hidden = true;
 });
@@ -207,19 +225,49 @@ function bindImagePickers() {
       });
   });
 }
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+// Downscale to a max width and re-encode as JPEG before it ever touches
+// localStorage or the server — phone photos routinely arrive at 3-5MB, and
+// this typically cuts that by 80-90% with no visible loss at showcase size.
+async function compressImage(file, maxWidth = 1600, quality = 0.82) {
+  const original = await readAsDataUrl(file);
+  try {
+    const img = await loadImageElement(original);
+    const scale = Math.min(1, maxWidth / img.naturalWidth);
+    const width = Math.max(1, Math.round(img.naturalWidth * scale));
+    const height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch {
+    return original; // fall back to the untouched original if this browser can't decode it
+  }
+}
 async function addImages(container, files) {
   const remaining = 8 - container.images.length;
   if (remaining <= 0) return;
   const data = await Promise.all(
-    files.slice(0, remaining).map(
-      (file) =>
-        new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        }),
-    ),
+    files.slice(0, remaining).map((file) => compressImage(file)),
   );
   container.images.push(...data);
   if (!container.thumbnail) container.thumbnail = container.images[0];
@@ -294,7 +342,9 @@ async function createLobby(event) {
     });
     const created = await response.json();
     if (!response.ok) throw new Error(created.error);
-    location.assign(`/lobby/${created.id}?host=1`);
+    location.assign(
+      `/lobby/${created.id}?host=${encodeURIComponent(created.hostToken)}`,
+    );
   } catch (error) {
     message.textContent = error.message || "Could not create the lobby.";
   }
@@ -307,8 +357,8 @@ function listingFrame(car) {
 function carDetails(car) {
   return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:9px"><b style="font-size:17px">${escapeHtml(car.name || car.source)}</b>${car.price ? `<span style="font:13px 'DM Mono',monospace">${escapeHtml(car.price)}</span>` : ""}</div>`;
 }
-function listingLink(car) {   
-  return `<a href="${encodeURI(car.sourceUrl)}" target="_blank" rel="noopener" style="display:inline-block;;margin:10px 0 0;color:inherit;font-size:12px;font-weight:600">Open original listing ↗</a>`; 
+function listingLink(car) {
+  return `<a href="${encodeURI(car.sourceUrl)}" target="_blank" rel="noopener" style="display:inline-block;margin:10px 0 0;color:inherit;font-size:12px;font-weight:600">Open original listing ↗</a>`;
 }
 function showcasePage(round) {
   const state = round.showcase || { carIndex: 0, imageIndex: 0 };
@@ -368,17 +418,33 @@ function finalScoreCard(round, car) {
 function lobbyPage() {
   const current = lobby.rounds[lobby.currentRound];
   if (lobby.status === "lobby") {
-    app.innerHTML = `<section class="lobby-hero"><p class="eyebrow">LOBBY OPEN · ${lobby.rounds.length} ROUND${lobby.rounds.length === 1 ? "" : "S"}</p><h1>${escapeHtml(lobby.title)}</h1><p>Players scan the code to join. When the gang is assembled, start the showdown.</p></section><section class="lobby-grid"><div class="qr-card"><img src="/api/lobbies/${encodeURIComponent(lobby.id)}/qr" alt="QR code to join this lobby" /><b>SCAN TO JOIN</b><span>${lobby.players} player${lobby.players === 1 ? "" : "s"} in the lobby</span></div><div class="lobby-details"><p class="eyebrow">UP NEXT</p>${lobby.rounds.map((round, index) => `<div class="round-row"><b>${index + 1}</b><span>${escapeHtml(round.title)}</span></div>`).join("")}${isHost ? '<button class="primary" id="start-game">Start game →</button>' : '<p class="wait-note">You’re in. Hang tight for the host to start the game.</p>'}</div></section>`;
+    const joinUrl = `${location.origin}/lobby/${encodeURIComponent(lobby.id)}`;
+    app.innerHTML = `<section class="lobby-hero"><p class="eyebrow">LOBBY OPEN · ${lobby.rounds.length} ROUND${lobby.rounds.length === 1 ? "" : "S"}</p><h1>${escapeHtml(lobby.title)}</h1><p>Players scan the code to join. When the gang is assembled, start the showdown.</p></section><section class="lobby-grid"><div class="qr-card"><img src="/api/lobbies/${encodeURIComponent(lobby.id)}/qr" alt="QR code to join this lobby" /><b>SCAN TO JOIN</b><span aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} in the lobby</span>${isHost ? '<button type="button" class="secondary" id="copy-link">Copy lobby link</button>' : ""}</div><div class="lobby-details"><p class="eyebrow">UP NEXT</p>${lobby.rounds.map((round, index) => `<div class="round-row"><b>${index + 1}</b><span>${escapeHtml(round.title)}</span></div>`).join("")}${isHost ? '<button class="primary" id="start-game">Start game →</button>' : '<p class="wait-note">You’re in. Hang tight for the host to start the game.</p>'}</div></section>`;
     document
       .querySelector("#start-game")
       ?.addEventListener("click", () => post(`/api/lobbies/${lobby.id}/start`));
+    document
+      .querySelector("#copy-link")
+      ?.addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        try {
+          await navigator.clipboard.writeText(joinUrl);
+          button.textContent = "Copied ✓";
+        } catch {
+          button.textContent = "Couldn’t copy, long-press to select";
+        }
+        setTimeout(() => {
+          button.textContent = "Copy lobby link";
+        }, 2000);
+      });
   } else if (lobby.status === "complete") {
     app.innerHTML = `<section class="lobby-hero"><p class="eyebrow">GAME OVER</p><h1>The room has spoken.</h1><p>${escapeHtml(lobby.title)} is complete. Here are the final round results.</p></section><section class="final-rounds">${lobby.rounds.map((round, index) => `<div><h2>${index + 1}. ${escapeHtml(round.title)}</h2><div class="scores">${round.cars.map((car) => finalScoreCard(round, car)).join("")}</div></div>`).join("")}</section>`;
   } else if (current.phase !== "voting") {
     showcasePage(current);
   } else {
-    const hasVoted = current.voters?.includes(getVoterId());
-    app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · VOTING OPEN</p><h1>${escapeHtml(current.title)}</h1><p>Pick the listing you’d rather take home.</p></section><section class="listing-arena">${current.cars.map((car, index) => `<div>${carDetails(car)}${listingFrame(car)}<div class="listing-actions">${isHost && (car.images?.length || car.thumbnail) ? `<button type="button" class="secondary fullscreen-btn" data-fullscreen-car="${index}" style="margin-top:10px">⛶ Fullscreen</button>` : ""}${listingLink(car)}</div>${isHost || hasVoted ? "" : `<button class="vote-button ${index ? "blue-button" : ""}" data-car="${car.id}">I’d take this one</button>`}</div>`).join('<span class="versus">OR</span>')}</section><section class="game-results" style="margin:48px auto 58px"><p class="eyebrow">LIVE VOTE</p>${scoreBoard(current)}<p id="vote-message" class="small">${!isHost && hasVoted ? "You’ve already voted in this round." : ""}</p>${isHost ? `<button id="next-round" class="secondary">${lobby.currentRound === lobby.rounds.length - 1 ? "Finish game" : "Next round →"}</button>` : ""}</section>`;
+    const hasVoted = hasVotedInRound(current.id);
+    const votedCount = current.voterCount || 0;
+    app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · VOTING OPEN</p><h1>${escapeHtml(current.title)}</h1><p>Pick the listing you’d rather take home.</p></section><section class="listing-arena">${current.cars.map((car, index) => `<div>${carDetails(car)}${listingFrame(car)}<div class="listing-actions">${isHost && (car.images?.length || car.thumbnail) ? `<button type="button" class="secondary fullscreen-btn" data-fullscreen-car="${index}" style="margin-top:10px">⛶ Fullscreen</button>` : ""}${listingLink(car)}</div>${isHost || hasVoted ? "" : `<button class="vote-button ${index ? "blue-button" : ""}" data-car="${car.id}">I’d take this one</button>`}</div>`).join('<span class="versus">OR</span>')}</section><section class="game-results" style="margin:48px auto 58px" aria-live="polite"><p class="eyebrow">LIVE VOTE · ${votedCount} OF ${lobby.players} PLAYER${lobby.players === 1 ? "" : "S"} VOTED</p>${scoreBoard(current)}<p id="vote-message" class="small">${!isHost && hasVoted ? "You’ve already voted in this round." : ""}</p>${isHost ? `<button id="next-round" class="secondary">${lobby.currentRound === lobby.rounds.length - 1 ? "Finish game" : "Next round →"}</button>` : ""}</section>`;
     document.querySelectorAll("[data-fullscreen-car]").forEach((button) => {
       const car = current.cars[Number(button.dataset.fullscreenCar)];
       const images = car.images?.length
@@ -403,32 +469,48 @@ function lobbyPage() {
   }
 }
 async function post(url, body) {
+  const headers = body ? { "Content-Type": "application/json" } : {};
+  if (hostToken) headers["X-Host-Token"] = hostToken;
   await fetch(url, {
     method: "POST",
-    headers: body ? { "Content-Type": "application/json" } : {},
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   await loadLobby();
 }
 async function vote(roundId, carId) {
   const message = document.querySelector("#vote-message");
+
   message.textContent = "Recording your vote…";
+
   try {
     const response = await fetch(
       `/api/lobbies/${lobby.id}/rounds/${roundId}/vote`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ carId, voterId: getVoterId() }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          carId,
+          voterId: getVoterId(),
+        }),
       },
     );
+
     const data = await response.json().catch(() => ({}));
-    if (!response.ok)
+
+    if (!response.ok) {
       throw new Error(data.error || "Could not record your vote.");
+    }
+
+    markRoundVoted(roundId);
+
     message.textContent = "Vote recorded.";
   } catch (error) {
     message.textContent = error.message;
   }
+
   await loadLobby();
 }
 async function loadLobby() {

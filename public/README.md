@@ -20,8 +20,16 @@ For phone voting on the same Wi-Fi, open the site using the computer's LAN addre
 
 The app only accepts `mudah.my` and `carlist.my` links. It does not scrape, cache, or reproduce listing data: it loads the original URL in an iframe and always offers an **Open original listing** link. Either marketplace may block iframe embedding with browser security headers; that is expected, and cannot safely be bypassed by this app.
 
+## Host controls
+
+Creating a lobby generates a random host token and lands the host on `/lobby/<id>?host=<token>` — the server checks that exact token on every host-only action (start, next round, showcase navigation), so a guest who edits the URL to guess a value can no longer seize control. Keep that link private; sharing it hands over host controls. Use the **Copy lobby link** button in the lobby view to copy the plain, token-free join link for guests instead.
+
+Photos are downscaled and re-encoded client-side (max 1600px wide, JPEG) before upload, which keeps `data/store.json` small and page loads fast even with a full 8-photo showcase per car.
+
 ## Before public launch
 
-- Move votes from the JSON file to a database (for example PostgreSQL/Supabase).
-- Add authenticated host controls, rate limiting, one-vote controls, moderation, and a privacy notice. The current `?host=1` link is a prototype convenience, not an authorization system.
+- Move votes from the JSON file to a database (for example PostgreSQL/Supabase) — `data/store.json` is rewritten in full on every vote, which won't scale to a large concurrent audience.
+- Add rate limiting, moderation, and a privacy notice. Host authorization now uses a real per-lobby token rather than a guessable link, but nothing here is hardened against abuse at scale yet.
 - Confirm the marketplaces' current terms and obtain permission before importing listing data, photographs, or brand assets.
+
+> Note: lobbies created before this update don't have a host token stored in `data/store.json` and will reject host actions with a 403. Clear out old test lobbies from that file (or delete it — it's regenerated on first run) after upgrading.

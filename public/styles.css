@@ -656,6 +656,10 @@ footer p {
   margin: 0 0 8px;
   text-align: center;
 }
+.footer-disclaimer {
+  max-width: 560px;
+  color: var(--muted);
+}
 .footer-links a {
   color: var(--ink);
   text-decoration: underline;
