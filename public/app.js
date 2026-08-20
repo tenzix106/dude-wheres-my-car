@@ -6,6 +6,11 @@ const lobbyId = location.pathname.match(/^\/lobby\/([^/]+)/)?.[1];
 const hostToken = new URLSearchParams(location.search).get("host") || "";
 const isHost = Boolean(hostToken);
 let lobby;
+let hasRenderedLobby = false;
+
+function showLoading(message = "Loading lobby") {
+  app.innerHTML = `<section class="loading-state" role="status" aria-live="polite"><span class="loading-spinner" aria-hidden="true"></span><p>${message}<span class="loading-dots" aria-hidden="true">...</span></p></section>`;
+}
 
 const themeToggle = document.querySelector("#theme-toggle");
 function applyTheme(isDark) {
@@ -399,7 +404,7 @@ function listingFrame(car) {
     : `<article class="listing-card" style="min-height:180px;display:grid;place-items:center"><span>No showcase image</span></article>`;
 }
 function carDetails(car) {
-  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:9px"><b style="font-size:17px">${escapeHtml(car.name || car.source)}</b>${car.price ? `<span style="font:13px 'DM Mono',monospace">${escapeHtml(car.price)}</span>` : ""}</div>`;
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:9px"><b style="font-size:17px">${escapeHtml(car.name || car.source)}</b>${car.price ? `<span style="font:20px 'DM Mono',monospace">${escapeHtml(car.price)}</span>` : ""}</div>`;
 }
 function listingLink(car) {
   return `<a href="${encodeURI(car.sourceUrl)}" target="_blank" rel="noopener" style="display:inline-block;margin:10px 0 0;color:inherit;font-size:12px;font-weight:600">Open original listing ↗</a>`;
@@ -489,7 +494,7 @@ function lobbyPage() {
   } else {
     const hasVoted = hasVotedInRound(current.id);
     const votedCount = current.voterCount || 0;
-    app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · VOTING OPEN</p><h1>${escapeHtml(current.title)}</h1><p>Pick the listing you’d rather take home.</p></section><section class="listing-arena">${current.cars.map((car, index) => `<div>${carDetails(car)}${listingFrame(car)}<div class="listing-actions">${isHost && (car.images?.length || car.thumbnail) ? `<button type="button" class="secondary fullscreen-btn" data-fullscreen-car="${index}" style="margin-top:10px">⛶ Fullscreen</button>` : ""}${listingLink(car)}</div>${isHost || hasVoted ? "" : `<button class="vote-button ${index ? "blue-button" : ""}" data-car="${car.id}">I’d take this one</button>`}</div>`).join('<span class="versus">OR</span>')}</section><section class="game-results" style="margin:48px auto 58px" aria-live="polite"><p class="eyebrow">LIVE VOTE · ${votedCount} OF ${lobby.players} PLAYER${lobby.players === 1 ? "" : "S"} VOTED</p>${scoreBoard(current)}<p id="vote-message" class="small">${!isHost && hasVoted ? "You’ve already voted in this round." : ""}</p>${isHost ? `<button id="next-round" class="secondary">${lobby.currentRound === lobby.rounds.length - 1 ? "Finish game" : "Next round →"}</button>` : ""}</section>`;
+    app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · VOTING OPEN</p><h1>${escapeHtml(current.title)}</h1><p class="voting-instruction">Pick the listing you’d rather take home. <span class="player-total">${lobby.players} player${lobby.players === 1 ? "" : "s"} connected</span></p></section><section class="listing-arena">${current.cars.map((car, index) => `<div>${carDetails(car)}${listingFrame(car)}<div class="listing-actions">${isHost && (car.images?.length || car.thumbnail) ? `<button type="button" class="secondary fullscreen-btn" data-fullscreen-car="${index}" style="margin-top:10px">⛶ Fullscreen</button>` : ""}${listingLink(car)}</div>${isHost || hasVoted ? "" : `<button class="vote-button ${index ? "blue-button" : ""}" data-car="${car.id}">I’d take this one</button>`}</div>`).join('<span class="versus">OR</span>')}</section><section class="game-results" style="margin:48px auto 58px" aria-live="polite"><p class="eyebrow">LIVE VOTE · ${votedCount} OF ${lobby.players} PLAYER${lobby.players === 1 ? "" : "S"} VOTED</p>${scoreBoard(current)}<p id="vote-message" class="small">${!isHost && hasVoted ? "You’ve already voted in this round." : ""}</p>${isHost ? `<button id="next-round" class="secondary">${lobby.currentRound === lobby.rounds.length - 1 ? "Finish game" : "Next round →"}</button>` : ""}</section>`;
     document.querySelectorAll("[data-fullscreen-car]").forEach((button) => {
       const car = current.cars[Number(button.dataset.fullscreenCar)];
       const images = car.images?.length
@@ -514,6 +519,7 @@ function lobbyPage() {
   }
 }
 async function post(url, body) {
+  showLoading("Updating game");
   const headers = body ? { "Content-Type": "application/json" } : {};
   if (hostToken) headers["X-Host-Token"] = hostToken;
   await fetch(url, {
@@ -559,6 +565,7 @@ async function vote(roundId, carId) {
   await loadLobby();
 }
 async function loadLobby() {
+  if (!hasRenderedLobby) showLoading();
   const response = await fetch(`/api/lobbies/${encodeURIComponent(lobbyId)}`);
   if (!response.ok) {
     app.innerHTML =
@@ -567,6 +574,7 @@ async function loadLobby() {
   }
   lobby = await response.json();
   lobbyPage();
+  hasRenderedLobby = true;
   syncLightboxToShowcase();
 }
 if (lobbyId) {
