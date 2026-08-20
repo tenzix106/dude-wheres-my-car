@@ -79,23 +79,51 @@ const lightboxImg = document.querySelector("#lightbox-img");
 const lightboxCaption = document.querySelector("#lightbox-caption");
 const lightboxPrevBtn = document.querySelector("#lightbox-prev");
 const lightboxNextBtn = document.querySelector("#lightbox-next");
+const lightboxCarPrevBtn = document.querySelector("#lightbox-car-prev");
+const lightboxCarNextBtn = document.querySelector("#lightbox-car-next");
 let lightboxImages = [];
 let lightboxIndex = 0;
 let lightboxTitle = "";
+let lightboxShowcase = false;
 function renderLightbox() {
   lightboxImg.src = lightboxImages[lightboxIndex];
   lightboxCaption.innerHTML = `<span class="lightbox-title">${lightboxTitle ? escapeHtml(lightboxTitle) : ""}</span><span class="lightbox-photo-count">Photo ${lightboxIndex + 1} of ${lightboxImages.length}</span>`;
   lightboxPrevBtn.disabled = lightboxIndex === 0;
   lightboxNextBtn.disabled = lightboxIndex === lightboxImages.length - 1;
+  const state = lobby?.rounds[lobby.currentRound]?.showcase;
+  lightboxCarPrevBtn.hidden = !lightboxShowcase;
+  lightboxCarNextBtn.hidden = !lightboxShowcase;
+  if (lightboxShowcase && state) {
+    lightboxCarPrevBtn.disabled = state.carIndex === 0;
+    lightboxCarNextBtn.disabled = state.carIndex === lobby.rounds[lobby.currentRound].cars.length - 1;
+  }
 }
-function openLightbox(images, startIndex, title) {
+function openLightbox(images, startIndex, title, showcase = false) {
   if (!images.length) return;
   lightboxImages = images;
   lightboxIndex = Math.max(0, Math.min(startIndex, images.length - 1));
   lightboxTitle = title || "";
+  lightboxShowcase = showcase;
   renderLightbox();
   lightbox.hidden = false;
   lightbox.requestFullscreen?.().catch(() => {});
+}
+function syncLightboxToShowcase() {
+  if (!lightboxShowcase) return;
+  const round = lobby?.rounds[lobby.currentRound];
+  if (!round || round.phase === "voting") {
+    closeLightbox();
+    return;
+  }
+  const state = round?.showcase;
+  const car = state && round.cars[state.carIndex];
+  if (!car) return;
+  const images = car.images?.length ? car.images : car.thumbnail ? [car.thumbnail] : [];
+  if (!images.length) return;
+  lightboxImages = images;
+  lightboxIndex = Math.min(state.imageIndex, images.length - 1);
+  lightboxTitle = car.name || car.source;
+  renderLightbox();
 }
 function closeLightbox() {
   if (document.fullscreenElement === lightbox) document.exitFullscreen?.();
@@ -103,15 +131,31 @@ function closeLightbox() {
 }
 lightboxPrevBtn.addEventListener("click", () => {
   if (lightboxIndex > 0) {
+    if (lightboxShowcase) {
+      post(`/api/lobbies/${lobby.id}/showcase/back`);
+      return;
+    }
     lightboxIndex -= 1;
     renderLightbox();
   }
 });
 lightboxNextBtn.addEventListener("click", () => {
   if (lightboxIndex < lightboxImages.length - 1) {
+    if (lightboxShowcase) {
+      post(`/api/lobbies/${lobby.id}/showcase/image`);
+      return;
+    }
     lightboxIndex += 1;
     renderLightbox();
   }
+});
+lightboxCarPrevBtn.addEventListener("click", () => {
+  if (lightboxShowcase && !lightboxCarPrevBtn.disabled)
+    post(`/api/lobbies/${lobby.id}/showcase/car/previous`);
+});
+lightboxCarNextBtn.addEventListener("click", () => {
+  if (lightboxShowcase && !lightboxCarNextBtn.disabled)
+    post(`/api/lobbies/${lobby.id}/showcase/car/next`);
 });
 document
   .querySelector("#lightbox-close")
@@ -379,6 +423,7 @@ function showcasePage(round) {
         fullscreenSource,
         images.length ? state.imageIndex : 0,
         car.name || car.source,
+        true,
       ),
     );
   document
@@ -419,7 +464,7 @@ function lobbyPage() {
   const current = lobby.rounds[lobby.currentRound];
   if (lobby.status === "lobby") {
     const joinUrl = `${location.origin}/lobby/${encodeURIComponent(lobby.id)}`;
-    app.innerHTML = `<section class="lobby-hero"><p class="eyebrow">LOBBY OPEN · ${lobby.rounds.length} ROUND${lobby.rounds.length === 1 ? "" : "S"}</p><h1>${escapeHtml(lobby.title)}</h1><p>Players scan the code to join. When the gang is assembled, start the showdown.</p></section><section class="lobby-grid"><div class="qr-card"><img src="/api/lobbies/${encodeURIComponent(lobby.id)}/qr" alt="QR code to join this lobby" /><b>SCAN TO JOIN</b><span aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} in the lobby</span>${isHost ? '<button type="button" class="secondary" id="copy-link">Copy lobby link</button>' : ""}</div><div class="lobby-details"><p class="eyebrow">UP NEXT</p>${lobby.rounds.map((round, index) => `<div class="round-row"><b>${index + 1}</b><span>${escapeHtml(round.title)}</span></div>`).join("")}${isHost ? '<button class="primary" id="start-game">Start game →</button>' : '<p class="wait-note">You’re in. Hang tight for the host to start the game.</p>'}</div></section>`;
+    app.innerHTML = `<section class="lobby-hero"><p class="eyebrow">LOBBY OPEN · ${lobby.rounds.length} ROUND${lobby.rounds.length === 1 ? "" : "S"}</p><h1>${escapeHtml(lobby.title)}</h1><p class="lobby-description">Players scan the code to join. When the gang is assembled, start the showdown. <span class="lobby-player-count" aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} scanned in</span></p></section><section class="lobby-grid"><div class="qr-card"><img src="/api/lobbies/${encodeURIComponent(lobby.id)}/qr" alt="QR code to join this lobby" /><b>SCAN TO JOIN</b><span aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} scanned in</span>${isHost ? '<button type="button" class="secondary" id="copy-link">Copy lobby link</button>' : ""}</div><div class="lobby-details"><div class="lobby-details-head"><p class="eyebrow">UP NEXT</p><span class="lobby-player-count" aria-live="polite">${lobby.players} player${lobby.players === 1 ? "" : "s"} scanned in</span></div>${lobby.rounds.map((round, index) => `<div class="round-row"><b>${index + 1}</b><span>${escapeHtml(round.title)}</span></div>`).join("")}${isHost ? '<button class="primary" id="start-game">Start game →</button>' : '<p class="wait-note">You’re in. Hang tight for the host to start the game.</p>'}</div></section>`;
     document
       .querySelector("#start-game")
       ?.addEventListener("click", () => post(`/api/lobbies/${lobby.id}/start`));
@@ -522,12 +567,15 @@ async function loadLobby() {
   }
   lobby = await response.json();
   lobbyPage();
+  syncLightboxToShowcase();
 }
 if (lobbyId) {
   if (!isHost && !sessionStorage.getItem(`joined:${lobbyId}`)) {
     sessionStorage.setItem(`joined:${lobbyId}`, "yes");
     fetch(`/api/lobbies/${encodeURIComponent(lobbyId)}/join`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerId: getVoterId() }),
     }).finally(loadLobby);
   } else loadLobby();
   setInterval(loadLobby, 3000);

@@ -47,7 +47,7 @@ function publicUrl(req) {
 // ever leave the server once, in the creation response.
 function sanitizeLobby(lobby) {
   if (!lobby) return lobby;
-  const { hostToken, ...rest } = lobby;
+  const { hostToken, playerIds, ...rest } = lobby;
   return rest;
 }
 // Host-only routes require the token issued at lobby creation, sent back as
@@ -183,6 +183,7 @@ app.post("/api/lobbies", (req, res) => {
     rounds,
     currentRound: 0,
     players: 0,
+    playerIds: [],
     createdAt: new Date().toISOString(),
     hostToken,
   };
@@ -234,7 +235,16 @@ app.post("/api/lobbies/:id/join", (req, res) => {
   const store = readStore();
   const lobby = store.lobbies.find((item) => item.id === req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
-  lobby.players += 1;
+  const playerId = String(req.body?.playerId || "").trim();
+  if (!playerId || playerId.length > 120)
+    return res.status(400).json({ error: "A player ID is required." });
+  if (!Array.isArray(lobby.playerIds))
+    lobby.playerIds = Array.from(
+      { length: Number(lobby.players) || 0 },
+      (_, index) => `legacy-${index + 1}`,
+    );
+  if (!lobby.playerIds.includes(playerId)) lobby.playerIds.push(playerId);
+  lobby.players = lobby.playerIds.length;
   writeStore(store);
   res.json({ players: lobby.players });
 });
@@ -394,6 +404,38 @@ app.post("/api/lobbies/:id/showcase/car", (req, res) => {
     round.showcase.carIndex += 1;
     round.showcase.imageIndex = 0;
   } else round.phase = "voting";
+  writeStore(store);
+  res.json(round);
+});
+
+app.post("/api/lobbies/:id/showcase/car/previous", (req, res) => {
+  const store = readStore();
+  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+  if (!lobby) return res.status(404).json({ error: "Lobby not found" });
+  if (!requireHost(req, res, lobby)) return;
+  const round = currentShowcase(lobby);
+  if (!round || round.phase !== "showcase")
+    return res.status(409).json({ error: "Showcase is not active" });
+  if (round.showcase.carIndex > 0) {
+    round.showcase.carIndex -= 1;
+    round.showcase.imageIndex = 0;
+  }
+  writeStore(store);
+  res.json(round);
+});
+
+app.post("/api/lobbies/:id/showcase/car/next", (req, res) => {
+  const store = readStore();
+  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+  if (!lobby) return res.status(404).json({ error: "Lobby not found" });
+  if (!requireHost(req, res, lobby)) return;
+  const round = currentShowcase(lobby);
+  if (!round || round.phase !== "showcase")
+    return res.status(409).json({ error: "Showcase is not active" });
+  if (round.showcase.carIndex < round.cars.length - 1) {
+    round.showcase.carIndex += 1;
+    round.showcase.imageIndex = 0;
+  }
   writeStore(store);
   res.json(round);
 });

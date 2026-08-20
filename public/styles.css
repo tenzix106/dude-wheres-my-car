@@ -436,9 +436,31 @@ footer,
 .qr-card span {
   font-size: 13px;
 }
+.lobby-description {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.lobby-player-count {
+  font:
+    11px "DM Mono",
+    monospace;
+  color: var(--muted);
+  white-space: nowrap;
+}
 .lobby-details {
   border-top: 2px solid var(--ink);
   padding-top: 18px;
+}
+.lobby-details-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.lobby-details-head .eyebrow {
+  margin-bottom: 0;
 }
 .round-row {
   display: grid;
@@ -730,6 +752,33 @@ footer p {
 }
 .lightbox-next {
   right: 16px;
+}
+.lightbox-car-nav {
+  position: absolute;
+  bottom: 22px;
+  z-index: 2;
+  border: 2px solid #f7f1e7;
+  background: rgba(23, 33, 40, 0.55);
+  color: #f7f1e7;
+  padding: 8px 12px;
+  font:
+    600 12px "Space Grotesk",
+    sans-serif;
+  cursor: pointer;
+}
+.lightbox-car-nav:hover:not(:disabled) {
+  background: var(--coral);
+  border-color: var(--coral);
+}
+.lightbox-car-nav:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.lightbox-car-prev {
+  left: 18px;
+}
+.lightbox-car-next {
+  right: 18px;
 }
 .lightbox-caption {
   position: absolute;
