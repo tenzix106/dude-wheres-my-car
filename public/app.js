@@ -3,6 +3,19 @@ const lobbyId = location.pathname.match(/^\/lobby\/([^/]+)/)?.[1];
 const isHost = new URLSearchParams(location.search).get("host") === "1";
 let lobby;
 
+const themeToggle = document.querySelector("#theme-toggle");
+function applyTheme(isDark) {
+  document.documentElement.dataset.theme = isDark ? "dark" : "light";
+  themeToggle?.setAttribute("aria-pressed", String(isDark));
+  if (themeToggle) themeToggle.textContent = isDark ? "Light mode" : "Dark mode";
+}
+applyTheme(localStorage.getItem("theme") === "dark");
+themeToggle?.addEventListener("click", () => {
+  const isDark = document.documentElement.dataset.theme !== "dark";
+  applyTheme(isDark);
+  localStorage.setItem("theme", isDark ? "dark" : "light");
+});
+
 const escapeHtml = (value) =>
   String(value).replace(
     /[&<>'"]/g,
@@ -45,13 +58,62 @@ function getVoterId() {
   }
   return id;
 }
+const lightbox = document.querySelector("#lightbox");
+const lightboxImg = document.querySelector("#lightbox-img");
+const lightboxCaption = document.querySelector("#lightbox-caption");
+const lightboxPrevBtn = document.querySelector("#lightbox-prev");
+const lightboxNextBtn = document.querySelector("#lightbox-next");
+let lightboxImages = [];
+let lightboxIndex = 0;
+let lightboxTitle = "";
+function renderLightbox() {
+  lightboxImg.src = lightboxImages[lightboxIndex];
+  lightboxCaption.innerHTML = `<span class="lightbox-title">${lightboxTitle ? escapeHtml(lightboxTitle) : ""}</span><span class="lightbox-photo-count">Photo ${lightboxIndex + 1} of ${lightboxImages.length}</span>`;
+  lightboxPrevBtn.disabled = lightboxIndex === 0;
+  lightboxNextBtn.disabled = lightboxIndex === lightboxImages.length - 1;
+}
+function openLightbox(images, startIndex, title) {
+  if (!images.length) return;
+  lightboxImages = images;
+  lightboxIndex = Math.max(0, Math.min(startIndex, images.length - 1));
+  lightboxTitle = title || "";
+  renderLightbox();
+  lightbox.hidden = false;
+  lightbox.requestFullscreen?.().catch(() => {});
+}
+function closeLightbox() {
+  if (document.fullscreenElement === lightbox) document.exitFullscreen?.();
+  lightbox.hidden = true;
+}
+lightboxPrevBtn.addEventListener("click", () => {
+  if (lightboxIndex > 0) {
+    lightboxIndex -= 1;
+    renderLightbox();
+  }
+});
+lightboxNextBtn.addEventListener("click", () => {
+  if (lightboxIndex < lightboxImages.length - 1) {
+    lightboxIndex += 1;
+    renderLightbox();
+  }
+});
+document.querySelector("#lightbox-close").addEventListener("click", closeLightbox);
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement) lightbox.hidden = true;
+});
+document.addEventListener("keydown", (event) => {
+  if (lightbox.hidden) return;
+  if (event.key === "ArrowLeft") lightboxPrevBtn.click();
+  else if (event.key === "ArrowRight") lightboxNextBtn.click();
+  else if (event.key === "Escape") closeLightbox();
+});
 const carFields = () =>
   `<div class="car-link"><label>Car name <input class="car-name" required maxlength="80" placeholder="e.g. 2020 Mazda MX-5" /></label><label>Price <input class="car-price" maxlength="40" placeholder="Optional · e.g. RM 154,000" /></label><label>Listing link <input required type="url" placeholder="https://www.mudah.my/... or carlist.my/..." /></label><label class="image-picker">Showcase photos <input class="image-input" type="file" accept="image/*" multiple /></label><div class="paste-zone" tabindex="0" role="button">Click here, then paste an image</div><p class="image-help">Select or paste up to 8 images, then arrange them below.</p><div class="image-order" aria-live="polite"></div></div>`;
 const roundFields = (number) =>
   `<fieldset class="round-fields"><legend>ROUND ${number}</legend><button type="button" class="remove-round secondary">Remove round</button><label>Round name <input class="round-name" maxlength="80" placeholder="Optional · defaults to Round ${number}" /></label><div class="link-grid">${carFields()}${carFields()}</div></fieldset>`;
 
 function setupPage() {
-  document.title = "Create a game - Dude, where’s my car?";
+  document.title = "Create a game — Dude, where’s my car?";
   app.innerHTML = `<section class="intro setup-intro"><p class="eyebrow">Host a very serious game</p><h1>Build your<br><em>car showdown.</em></h1><p>Add two cars and their showcase images, invite the room with a QR code, then start when everyone is in.</p></section><form id="creator" class="creator"><label class="game-name">Game name <input id="game-name" required maxlength="80" value="Tonight’s car showdown" /></label><div id="rounds">${roundFields(1)}</div><div class="form-actions"><button type="button" id="add-round" class="secondary">+ Add another round</button><button type="submit" class="primary">Create lobby →</button></div><p id="form-message" class="small"></p></form>`;
   document.querySelector("#add-round").addEventListener("click", () => {
     const rounds = document.querySelector("#rounds");
@@ -239,14 +301,14 @@ async function createLobby(event) {
 }
 function listingFrame(car) {
   return car.thumbnail
-    ? `<article class="listing-card" style="border:2px solid var(--ink);background:#182128"><img src="${car.thumbnail}" alt="${escapeHtml(car.name || car.source)} listing thumbnail" style="display:block;width:100%;height:auto;max-height:340px;object-fit:contain;background:#182128" /></article>`
+    ? `<article class="listing-card" style="border:2px solid var(--ink);background:#182128"><img src="${car.thumbnail}" alt="${escapeHtml(car.name || car.source)} listing thumbnail" style="display:block;width:100%;height:auto;max-height:460px;object-fit:contain;background:#182128" /></article>`
     : `<article class="listing-card" style="min-height:180px;display:grid;place-items:center"><span>No showcase image</span></article>`;
 }
 function carDetails(car) {
   return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:9px"><b style="font-size:17px">${escapeHtml(car.name || car.source)}</b>${car.price ? `<span style="font:13px 'DM Mono',monospace">${escapeHtml(car.price)}</span>` : ""}</div>`;
 }
-function listingLink(car) {
-  return `<a href="${encodeURI(car.sourceUrl)}" target="_blank" rel="noopener" style="display:inline-block;margin:10px 0 0;color:inherit;font-size:12px;font-weight:600">Open original listing ↗</a>`;
+function listingLink(car) {   
+  return `<a href="${encodeURI(car.sourceUrl)}" target="_blank" rel="noopener" style="display:inline-block;;margin:10px 0 0;color:inherit;font-size:12px;font-weight:600">Open original listing ↗</a>`; 
 }
 function showcasePage(round) {
   const state = round.showcase || { carIndex: 0, imageIndex: 0 };
@@ -254,7 +316,21 @@ function showcasePage(round) {
   const images = car.images || [];
   const image = images[state.imageIndex];
   const finalCar = state.carIndex === round.cars.length - 1;
-  app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · SHOWCASE</p><h1>${escapeHtml(round.title)}</h1><p>${escapeHtml(car.name || car.source)} is on the floor. No voting yet.</p></section><section class="showcase"><div class="showcase-label"><b>CAR ${state.carIndex + 1} OF 2</b><span>${images.length ? `PHOTO ${state.imageIndex + 1} OF ${images.length}` : "LISTING OVERVIEW"}</span></div>${image ? `<img src="${image}" alt="${escapeHtml(car.name || car.source)} showcase photo ${state.imageIndex + 1}" />` : listingFrame(car)}${isHost ? `<div class="showcase-controls"><button class="secondary" id="showcase-back" ${state.carIndex === 0 && state.imageIndex === 0 ? "disabled" : ""}>← Back</button>${state.imageIndex < images.length - 1 ? '<button class="secondary" id="showcase-image">Next image →</button>' : ""}<button class="primary" id="showcase-car">${finalCar ? "Start voting →" : "Show car 2 →"}</button></div>` : '<p class="wait-note">The host is guiding the showcase.</p>'}</section>`;
+  const fullscreenSource = images.length
+    ? images
+    : car.thumbnail
+      ? [car.thumbnail]
+      : [];
+  app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · SHOWCASE</p><h1>${escapeHtml(round.title)}</h1><p>${escapeHtml(car.name || car.source)} is on the floor. No voting yet.</p></section><section class="showcase"><div class="showcase-label"><b>CAR ${state.carIndex + 1} OF 2</b><span>${images.length ? `PHOTO ${state.imageIndex + 1} OF ${images.length}` : "LISTING OVERVIEW"}</span></div>${image ? `<img src="${image}" alt="${escapeHtml(car.name || car.source)} showcase photo ${state.imageIndex + 1}" />` : listingFrame(car)}${isHost ? `<div class="showcase-controls">${fullscreenSource.length ? '<button type="button" class="secondary fullscreen-btn" id="showcase-fullscreen">⛶ Fullscreen</button>' : ""}<button class="secondary" id="showcase-back" ${state.carIndex === 0 && state.imageIndex === 0 ? "disabled" : ""}>← Back</button>${state.imageIndex < images.length - 1 ? '<button class="secondary" id="showcase-image">Next image →</button>' : ""}<button class="primary" id="showcase-car">${finalCar ? "Start voting →" : "Show car 2 →"}</button></div>` : '<p class="wait-note">The host is guiding the showcase.</p>'}</section>`;
+  document
+    .querySelector("#showcase-fullscreen")
+    ?.addEventListener("click", () =>
+      openLightbox(
+        fullscreenSource,
+        images.length ? state.imageIndex : 0,
+        car.name || car.source,
+      ),
+    );
   document
     .querySelector("#showcase-back")
     ?.addEventListener("click", () =>
@@ -302,7 +378,18 @@ function lobbyPage() {
     showcasePage(current);
   } else {
     const hasVoted = current.voters?.includes(getVoterId());
-    app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · VOTING OPEN</p><h1>${escapeHtml(current.title)}</h1><p>Pick the listing you’d rather take home.</p></section><section class="listing-arena">${current.cars.map((car, index) => `<div>${carDetails(car)}${listingFrame(car)}${listingLink(car)}${isHost || hasVoted ? "" : `<button class="vote-button ${index ? "blue-button" : ""}" data-car="${car.id}">I’d take this one</button>`}</div>`).join('<span class="versus">OR</span>')}</section><section class="game-results" style="margin:48px auto 58px"><p class="eyebrow">LIVE VOTE</p>${scoreBoard(current)}<p id="vote-message" class="small">${!isHost && hasVoted ? "You’ve already voted in this round." : ""}</p>${isHost ? `<button id="next-round" class="secondary">${lobby.currentRound === lobby.rounds.length - 1 ? "Finish game" : "Next round →"}</button>` : ""}</section>`;
+    app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · VOTING OPEN</p><h1>${escapeHtml(current.title)}</h1><p>Pick the listing you’d rather take home.</p></section><section class="listing-arena">${current.cars.map((car, index) => `<div>${carDetails(car)}${listingFrame(car)}<div class="listing-actions">${isHost && (car.images?.length || car.thumbnail) ? `<button type="button" class="secondary fullscreen-btn" data-fullscreen-car="${index}" style="margin-top:10px">⛶ Fullscreen</button>` : ""}${listingLink(car)}</div>${isHost || hasVoted ? "" : `<button class="vote-button ${index ? "blue-button" : ""}" data-car="${car.id}">I’d take this one</button>`}</div>`).join('<span class="versus">OR</span>')}</section><section class="game-results" style="margin:48px auto 58px"><p class="eyebrow">LIVE VOTE</p>${scoreBoard(current)}<p id="vote-message" class="small">${!isHost && hasVoted ? "You’ve already voted in this round." : ""}</p>${isHost ? `<button id="next-round" class="secondary">${lobby.currentRound === lobby.rounds.length - 1 ? "Finish game" : "Next round →"}</button>` : ""}</section>`;
+    document.querySelectorAll("[data-fullscreen-car]").forEach((button) => {
+      const car = current.cars[Number(button.dataset.fullscreenCar)];
+      const images = car.images?.length
+        ? car.images
+        : car.thumbnail
+          ? [car.thumbnail]
+          : [];
+      button.addEventListener("click", () =>
+        openLightbox(images, 0, car.name || car.source),
+      );
+    });
     document
       .querySelectorAll("[data-car]")
       .forEach((button) =>
