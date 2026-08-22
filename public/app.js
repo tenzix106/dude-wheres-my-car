@@ -570,17 +570,37 @@ async function vote(roundId, carId) {
   await loadLobby();
 }
 async function loadLobby() {
+  if (loadLobby.inFlight) return;
+  loadLobby.inFlight = true;
   if (!hasRenderedLobby) showLoading();
-  const response = await fetch(`/api/lobbies/${encodeURIComponent(lobbyId)}`);
-  if (!response.ok) {
-    app.innerHTML =
-      '<section class="intro"><h1>This lobby has driven away.</h1></section>';
-    return;
+  try {
+    const response = await fetch(
+      `/api/lobbies/${encodeURIComponent(lobbyId)}`,
+      { signal: AbortSignal.timeout(15000) },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 404) {
+        app.innerHTML =
+          '<section class="intro"><h1>This lobby has driven away.</h1></section>';
+        hasRenderedLobby = true;
+        return;
+      }
+      throw new Error(data.error || "Could not load the lobby.");
+    }
+    lobby = data;
+    lobbyPage();
+    hasRenderedLobby = true;
+    syncLightboxToShowcase();
+  } catch (error) {
+    console.error("Lobby refresh failed:", error);
+    if (!hasRenderedLobby) {
+      app.innerHTML = `<section class="intro"><h1>Reconnecting to the lobby…</h1><p>${escapeHtml(error.message || "The server is temporarily unreachable.")}</p><button class="primary" id="retry-lobby">Try again</button></section>`;
+      document.querySelector("#retry-lobby")?.addEventListener("click", loadLobby);
+    }
+  } finally {
+    loadLobby.inFlight = false;
   }
-  lobby = await response.json();
-  lobbyPage();
-  hasRenderedLobby = true;
-  syncLightboxToShowcase();
 }
 if (lobbyId) {
   if (!isHost && !sessionStorage.getItem(`joined:${lobbyId}`)) {
@@ -589,7 +609,15 @@ if (lobbyId) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ playerId: getVoterId() }),
-    }).finally(loadLobby);
-  } else loadLobby();
-  setInterval(loadLobby, 3000);
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Join failed (${response.status})`);
+      })
+      .catch((error) => {
+        sessionStorage.removeItem(`joined:${lobbyId}`);
+        console.error("Could not join lobby:", error);
+      })
+      .finally(() => void loadLobby());
+  } else void loadLobby();
+  setInterval(() => void loadLobby(), 3000);
 } else setupPage();

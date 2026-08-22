@@ -218,20 +218,13 @@ app.get('/api/lobbies/:id', async (req, res) => {
 
     const result = sanitizeLobby(structuredClone(lobby));
 
-    for (const round of result.rounds) {
-      const { votes, voterCount } = await getRoundVotes(
-        result.id,
-        round.id,
+    await Promise.all(result.rounds.map(async (round) => {
+      const { votes, voterCount } = await getRoundVotes(result.id, round.id);
+      round.votes = Object.fromEntries(
+        round.cars.map((car) => [car.id, votes[car.id] || 0]),
       );
-
-      round.votes = {};
-
-      for (const car of round.cars) {
-        round.votes[car.id] = votes[car.id] || 0;
-      }
-
       round.voterCount = voterCount;
-    }
+    }));
 
     res.json(result);
   } catch (error) {
