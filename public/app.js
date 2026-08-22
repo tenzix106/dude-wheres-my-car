@@ -458,7 +458,7 @@ function listingFrame(car) {
     : `<article class="listing-card" style="min-height:180px;display:grid;place-items:center"><span>No showcase image</span></article>`;
 }
 function carDetails(car) {
-  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:9px"><b style="font-size:17px">${escapeHtml(car.name || car.source)}</b>${car.price ? `<span style="font:20px 'DM Mono',monospace">${escapeHtml(car.price)}</span>` : ""}</div>`;
+  return `<div class="car-details"><b class="car-name">${escapeHtml(car.name || car.source)}</b>${car.price ? `<span class="car-price">${escapeHtml(car.price)}</span>` : ""}</div>`;
 }
 function listingLink(car) {
   return `<a href="${encodeURI(car.sourceUrl)}" target="_blank" rel="noopener" style="display:inline-block;margin:10px 0 0;color:inherit;font-size:12px;font-weight:600">Open original listing ↗</a>`;
@@ -474,7 +474,7 @@ function showcasePage(round) {
     : car.thumbnail
       ? [car.thumbnail]
       : [];
-  app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · SHOWCASE</p><h1>${escapeHtml(round.title)}</h1><p>${escapeHtml(car.name || car.source)} is on the floor. No voting yet.</p></section><section class="showcase"><div class="showcase-label"><b>CAR ${state.carIndex + 1} OF 2</b><span>${images.length ? `PHOTO ${state.imageIndex + 1} OF ${images.length}` : "LISTING OVERVIEW"}</span></div>${image ? `<img src="${image}" alt="${escapeHtml(car.name || car.source)} showcase photo ${state.imageIndex + 1}" />` : listingFrame(car)}${isHost ? `<div class="showcase-controls">${fullscreenSource.length ? '<button type="button" class="secondary fullscreen-btn" id="showcase-fullscreen">⛶ Fullscreen</button>' : ""}<button class="secondary" id="showcase-back" ${state.carIndex === 0 && state.imageIndex === 0 ? "disabled" : ""}>← Back</button>${state.imageIndex < images.length - 1 ? '<button class="secondary" id="showcase-image">Next image →</button>' : ""}<button class="primary" id="showcase-car">${finalCar ? "Start voting →" : "Show car 2 →"}</button></div>` : '<p class="wait-note">The host is guiding the showcase.</p>'}</section>`;
+  app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · SHOWCASE</p><h1>${escapeHtml(round.title)}</h1><p>No voting yet.</p></section><section class="showcase"><div class="showcase-label"><b>CAR ${state.carIndex + 1} OF 2</b><span>${images.length ? `PHOTO ${state.imageIndex + 1} OF ${images.length}` : "LISTING OVERVIEW"}</span></div>${image ? `<img src="${image}" alt="${escapeHtml(car.name || car.source)} showcase photo ${state.imageIndex + 1}" />` : listingFrame(car)}${isHost ? `<div class="showcase-controls">${fullscreenSource.length ? '<button type="button" class="secondary fullscreen-btn" id="showcase-fullscreen">⛶ Fullscreen</button>' : ""}<button class="secondary" id="showcase-back" ${state.carIndex === 0 && state.imageIndex === 0 ? "disabled" : ""}>← Back</button>${state.imageIndex < images.length - 1 ? '<button class="secondary" id="showcase-image">Next image →</button>' : ""}<button class="primary" id="showcase-car">${finalCar ? "Start voting →" : "Show car 2 →"}</button></div>` : '<p class="wait-note">The host is guiding the showcase.</p>'}</section>`;
   document
     .querySelector("#showcase-fullscreen")
     ?.addEventListener("click", () =>

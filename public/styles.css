@@ -604,6 +604,29 @@ footer,
 .listing-arena > div {
   min-width: 0;
 }
+.car-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 7px 14px;
+  margin-bottom: 9px;
+  min-width: 0;
+}
+.car-name {
+  min-width: 0;
+  font-size: 17px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.car-price {
+  font:
+    20px "DM Mono",
+    monospace;
+  line-height: 1.25;
+  text-align: right;
+  white-space: nowrap;
+}
 .versus {
   text-align: center;
   font:
@@ -918,6 +941,12 @@ footer p {
   }
   .listing-card-body {
     min-height: 260px;
+  }
+  .car-details {
+    grid-template-columns: 1fr;
+  }
+  .car-price {
+    text-align: left;
   }
   .showcase > img {
     height: 74vw;
