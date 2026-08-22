@@ -168,7 +168,7 @@ function sourceFor(url) {
 async function getRoundVotes(lobbyId, roundId) {
   const { data, error } = await supabase
     .from('votes')
-    .select('car_id')
+    .select('car_id, voter_id')
     .eq('lobby_id', lobbyId)
     .eq('round_id', roundId);
 
@@ -186,6 +186,7 @@ async function getRoundVotes(lobbyId, roundId) {
   return {
     votes,
     voterCount: data.length,
+    voterIds: data.map((vote) => vote.voter_id).filter(Boolean),
   };
 }
 
@@ -310,7 +311,19 @@ app.get('/api/lobbies/:id', async (req, res) => {
       getLobbyPlayerCount(result.id),
       ...result.rounds.map((round) => getRoundVotes(result.id, round.id)),
     ]);
-    if (Number.isFinite(playerCount)) result.players = playerCount;
+    // A successfully recorded vote is also proof that this person is taking
+    // part in the lobby. Include voters in the public player count so a mobile
+    // join request that was dropped by the browser cannot produce "1 of 0".
+    const participatingPlayerIds = new Set(
+      Array.isArray(lobby.playerIds) ? lobby.playerIds : [],
+    );
+    roundVoteResults.forEach(({ voterIds }) => {
+      voterIds.forEach((voterId) => participatingPlayerIds.add(voterId));
+    });
+    result.players = Math.max(
+      Number.isFinite(playerCount) ? playerCount : 0,
+      participatingPlayerIds.size,
+    );
     result.rounds.forEach((round, index) => {
       const { votes, voterCount } = roundVoteResults[index];
       round.votes = Object.fromEntries(

@@ -194,6 +194,9 @@ try {
     409,
   );
   state = (await request(`/api/lobbies/${lobbyId}`)).body;
+  // Voters are participants even if their separate mobile join request was
+  // dropped, so the UI must never be able to render "1 of 0 players voted".
+  assert.equal(state.players, 3);
   assert.equal(state.rounds[0].votes["r1-c1"], 1);
   assert.equal(state.rounds[0].voterCount, 1);
 

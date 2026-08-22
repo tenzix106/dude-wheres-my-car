@@ -762,7 +762,7 @@ async function joinLobby() {
 
   joinLobby.inFlight = true;
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `/api/lobbies/${encodeURIComponent(lobbyId)}/join`,
       {
         method: "POST",
@@ -770,6 +770,7 @@ async function joinLobby() {
         body: JSON.stringify({ playerId: getVoterId() }),
         keepalive: true,
       },
+      4500,
     );
     const data = await response.json().catch(() => ({}));
     if (!response.ok)
@@ -800,6 +801,15 @@ async function joinLobby() {
     joinLobby.inFlight = false;
   }
 }
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 function sendBeaconJson(url, body) {
   if (typeof navigator.sendBeacon !== "function") return false;
   try {
@@ -815,7 +825,11 @@ async function pollConfirmation(url, predicate) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
     try {
-      const response = await fetch(url, { cache: "no-store" });
+      const response = await fetchWithTimeout(
+        url,
+        { cache: "no-store" },
+        3500,
+      );
       if (response.ok && predicate(await response.json())) return true;
     } catch {
       // The normal three-second loop will retry if confirmation also fails.
