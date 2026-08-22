@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "migrate:store": "node --env-file=.env scripts/migrate-store-to-supabase.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

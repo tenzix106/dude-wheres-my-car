@@ -1,14 +1,11 @@
 import express from "express";
 import QRCode from "qrcode";
-import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.join(root, "data");
-const dataFile = path.join(dataDir, "store.json");
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -24,19 +21,40 @@ const supabase = createClient(
   },
 );
 
-const seed = { lobbies: [] };
+async function getLobby(id) {
+  const { data, error } = await supabase
+    .from("lobbies")
+    .select("state")
+    .eq("id", id)
+    .maybeSingle();
 
-function readStore() {
-  if (!fs.existsSync(dataFile)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(dataFile, JSON.stringify(seed, null, 2));
-  }
-  const store = JSON.parse(fs.readFileSync(dataFile, "utf8"));
-  store.lobbies ??= [];
-  return store;
+  if (error) throw error;
+  return data?.state || null;
 }
-function writeStore(store) {
-  fs.writeFileSync(dataFile, JSON.stringify(store, null, 2));
+
+async function createLobby(lobby) {
+  const { error } = await supabase.from("lobbies").insert({
+    id: lobby.id,
+    state: lobby,
+    created_at: lobby.createdAt,
+  });
+  if (error) throw error;
+}
+
+async function saveLobby(lobby) {
+  const { data, error } = await supabase
+    .from("lobbies")
+    .update({ state: lobby, updated_at: new Date().toISOString() })
+    .eq("id", lobby.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error(`Lobby ${lobby.id} no longer exists.`);
+}
+
+function asyncRoute(handler) {
+  return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
 function publicUrl(req) {
   return (
@@ -73,10 +91,6 @@ function sourceFor(url) {
   }
   return null;
 }
-function getLobby(id) {
-  return readStore().lobbies.find((lobby) => lobby.id === id);
-}
-
 async function getRoundVotes(lobbyId, roundId) {
   const { data, error } = await supabase
     .from('votes')
@@ -104,7 +118,7 @@ async function getRoundVotes(lobbyId, roundId) {
 app.use(express.json({ limit: "50mb" }));
 app.use(express.static(path.join(root, "public")));
 
-app.post("/api/lobbies", (req, res) => {
+app.post("/api/lobbies", asyncRoute(async (req, res) => {
   const requestedRounds = req.body?.rounds;
   if (!Array.isArray(requestedRounds) || !requestedRounds.length)
     return res.status(400).json({ error: "Add at least one round." });
@@ -173,7 +187,6 @@ app.post("/api/lobbies", (req, res) => {
       },
     });
   }
-  const store = readStore();
   const id = `lobby-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const hostToken = crypto.randomBytes(20).toString("hex");
   const lobby = {
@@ -187,16 +200,15 @@ app.post("/api/lobbies", (req, res) => {
     createdAt: new Date().toISOString(),
     hostToken,
   };
-  store.lobbies.push(lobby);
-  writeStore(store);
+  await createLobby(lobby);
   // Only this response ever includes the raw hostToken — the browser stores
   // it so it can be sent back on subsequent host-only requests.
   res.status(201).json(lobby);
-});
+}));
 
 app.get('/api/lobbies/:id', async (req, res) => {
   try {
-    const lobby = getLobby(req.params.id);
+    const lobby = await getLobby(req.params.id);
 
     if (!lobby) {
       return res.status(404).json({
@@ -231,9 +243,8 @@ app.get('/api/lobbies/:id', async (req, res) => {
   }
 });
 
-app.post("/api/lobbies/:id/join", (req, res) => {
-  const store = readStore();
-  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+app.post("/api/lobbies/:id/join", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   const playerId = String(req.body?.playerId || "").trim();
   if (!playerId || playerId.length > 120)
@@ -245,26 +256,24 @@ app.post("/api/lobbies/:id/join", (req, res) => {
     );
   if (!lobby.playerIds.includes(playerId)) lobby.playerIds.push(playerId);
   lobby.players = lobby.playerIds.length;
-  writeStore(store);
+  await saveLobby(lobby);
   res.json({ players: lobby.players });
-});
+}));
 
-app.post("/api/lobbies/:id/start", (req, res) => {
-  const store = readStore();
-  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+app.post("/api/lobbies/:id/start", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   if (!requireHost(req, res, lobby)) return;
   lobby.status = "playing";
   lobby.currentRound = 0;
   lobby.rounds[0].phase = "showcase";
   lobby.rounds[0].showcase = { carIndex: 0, imageIndex: 0 };
-  writeStore(store);
+  await saveLobby(lobby);
   res.json(sanitizeLobby(lobby));
-});
+}));
 
-app.post("/api/lobbies/:id/next", (req, res) => {
-  const store = readStore();
-  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+app.post("/api/lobbies/:id/next", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   if (!requireHost(req, res, lobby)) return;
   if (lobby.currentRound < lobby.rounds.length - 1) {
@@ -272,9 +281,9 @@ app.post("/api/lobbies/:id/next", (req, res) => {
     lobby.rounds[lobby.currentRound].phase = "showcase";
     lobby.rounds[lobby.currentRound].showcase = { carIndex: 0, imageIndex: 0 };
   } else lobby.status = "complete";
-  writeStore(store);
+  await saveLobby(lobby);
   res.json(sanitizeLobby(lobby));
-});
+}));
 
 app.post("/api/lobbies/:id/rounds/:roundId/vote", async (req, res) => {
   try {
@@ -286,7 +295,7 @@ app.post("/api/lobbies/:id/rounds/:roundId/vote", async (req, res) => {
       });
     }
 
-    const lobby = getLobby(req.params.id);
+    const lobby = await getLobby(req.params.id);
 
     if (!lobby) {
       return res.status(404).json({
@@ -359,9 +368,8 @@ function currentShowcase(lobby) {
   }
   return round;
 }
-app.post("/api/lobbies/:id/showcase/image", (req, res) => {
-  const store = readStore();
-  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+app.post("/api/lobbies/:id/showcase/image", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   if (!requireHost(req, res, lobby)) return;
   const round = currentShowcase(lobby);
@@ -370,12 +378,11 @@ app.post("/api/lobbies/:id/showcase/image", (req, res) => {
   const images = round.cars[round.showcase.carIndex].images || [];
   if (round.showcase.imageIndex < images.length - 1)
     round.showcase.imageIndex += 1;
-  writeStore(store);
+  await saveLobby(lobby);
   res.json(round);
-});
-app.post("/api/lobbies/:id/showcase/back", (req, res) => {
-  const store = readStore();
-  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+}));
+app.post("/api/lobbies/:id/showcase/back", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   if (!requireHost(req, res, lobby)) return;
   const round = currentShowcase(lobby);
@@ -389,12 +396,11 @@ app.post("/api/lobbies/:id/showcase/back", (req, res) => {
       0,
     );
   }
-  writeStore(store);
+  await saveLobby(lobby);
   res.json(round);
-});
-app.post("/api/lobbies/:id/showcase/car", (req, res) => {
-  const store = readStore();
-  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+}));
+app.post("/api/lobbies/:id/showcase/car", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   if (!requireHost(req, res, lobby)) return;
   const round = currentShowcase(lobby);
@@ -404,13 +410,12 @@ app.post("/api/lobbies/:id/showcase/car", (req, res) => {
     round.showcase.carIndex += 1;
     round.showcase.imageIndex = 0;
   } else round.phase = "voting";
-  writeStore(store);
+  await saveLobby(lobby);
   res.json(round);
-});
+}));
 
-app.post("/api/lobbies/:id/showcase/car/previous", (req, res) => {
-  const store = readStore();
-  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+app.post("/api/lobbies/:id/showcase/car/previous", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   if (!requireHost(req, res, lobby)) return;
   const round = currentShowcase(lobby);
@@ -420,13 +425,12 @@ app.post("/api/lobbies/:id/showcase/car/previous", (req, res) => {
     round.showcase.carIndex -= 1;
     round.showcase.imageIndex = 0;
   }
-  writeStore(store);
+  await saveLobby(lobby);
   res.json(round);
-});
+}));
 
-app.post("/api/lobbies/:id/showcase/car/next", (req, res) => {
-  const store = readStore();
-  const lobby = store.lobbies.find((item) => item.id === req.params.id);
+app.post("/api/lobbies/:id/showcase/car/next", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   if (!requireHost(req, res, lobby)) return;
   const round = currentShowcase(lobby);
@@ -436,13 +440,13 @@ app.post("/api/lobbies/:id/showcase/car/next", (req, res) => {
     round.showcase.carIndex += 1;
     round.showcase.imageIndex = 0;
   }
-  writeStore(store);
+  await saveLobby(lobby);
   res.json(round);
-});
+}));
 
 app.get("/api/lobbies/:id/qr", async (req, res, next) => {
-  if (!getLobby(req.params.id)) return res.status(404).end();
   try {
+    if (!(await getLobby(req.params.id))) return res.status(404).end();
     const joinUrl = `${publicUrl(req)}/lobby/${encodeURIComponent(req.params.id)}`;
     const svg = await QRCode.toString(joinUrl, {
       type: "svg",
@@ -459,6 +463,13 @@ app.get("/api/lobbies/:id/qr", async (req, res, next) => {
 app.get(["/lobby/:id", "/"], (_req, res) =>
   res.sendFile(path.join(root, "public", "index.html")),
 );
+
+app.use((error, req, res, _next) => {
+  console.error(`${req.method} ${req.originalUrl} failed:`, error);
+  if (res.headersSent) return;
+  res.status(500).json({ error: "Could not update lobby." });
+});
+
 app.listen(port, "0.0.0.0", () =>
   console.log(`Dude, where's my car? is running at http://localhost:${port}`),
 );
