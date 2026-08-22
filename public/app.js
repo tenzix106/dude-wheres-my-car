@@ -574,10 +574,7 @@ async function loadLobby() {
   loadLobby.inFlight = true;
   if (!hasRenderedLobby) showLoading();
   try {
-    const response = await fetch(
-      `/api/lobbies/${encodeURIComponent(lobbyId)}`,
-      { signal: AbortSignal.timeout(15000) },
-    );
+    const response = await fetch(`/api/lobbies/${encodeURIComponent(lobbyId)}`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (response.status === 404) {
@@ -602,22 +599,37 @@ async function loadLobby() {
     loadLobby.inFlight = false;
   }
 }
-if (lobbyId) {
-  if (!isHost && !sessionStorage.getItem(`joined:${lobbyId}`)) {
+async function joinLobby() {
+  if (isHost || sessionStorage.getItem(`joined:${lobbyId}`) || joinLobby.inFlight)
+    return;
+
+  joinLobby.inFlight = true;
+  try {
+    const response = await fetch(
+      `/api/lobbies/${encodeURIComponent(lobbyId)}/join`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId: getVoterId() }),
+      },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Error(data.error || `Join failed (${response.status})`);
+
     sessionStorage.setItem(`joined:${lobbyId}`, "yes");
-    fetch(`/api/lobbies/${encodeURIComponent(lobbyId)}/join`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playerId: getVoterId() }),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error(`Join failed (${response.status})`);
-      })
-      .catch((error) => {
-        sessionStorage.removeItem(`joined:${lobbyId}`);
-        console.error("Could not join lobby:", error);
-      })
-      .finally(() => void loadLobby());
-  } else void loadLobby();
-  setInterval(() => void loadLobby(), 3000);
+    await loadLobby();
+  } catch (error) {
+    console.error("Could not join lobby; will retry:", error);
+  } finally {
+    joinLobby.inFlight = false;
+  }
+}
+if (lobbyId) {
+  void loadLobby();
+  void joinLobby();
+  setInterval(() => {
+    void loadLobby();
+    void joinLobby();
+  }, 3000);
 } else setupPage();
