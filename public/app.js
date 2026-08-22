@@ -562,11 +562,14 @@ async function post(url, body) {
     showLoading("Updating game");
     const headers = body ? { "Content-Type": "application/json" } : {};
     if (hostToken) headers["X-Host-Token"] = hostToken;
-    const response = await fetch(url, {
+    const requestOptions = {
       method: "POST",
       headers,
       body: body ? JSON.stringify(body) : undefined,
-    });
+    };
+    const response = url.endsWith("/start")
+      ? await fetchStartWithRetry(url, requestOptions)
+      : await fetch(url, requestOptions);
     const data = await response.json().catch(() => ({}));
     if (!response.ok)
       throw new Error(data.error || `Update failed (${response.status})`);
@@ -598,6 +601,20 @@ async function post(url, body) {
   } finally {
     post.inFlight = false;
   }
+}
+async function fetchStartWithRetry(url, options) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      if (response.status < 500 || attempt === 2) return response;
+      lastError = new Error(`Start Game failed (${response.status})`);
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+  }
+  throw lastError || new Error("Could not start the game.");
 }
 function lobbyStateSignature() {
   if (!lobby) return "";

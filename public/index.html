@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Mono&family=Space+Grotesk:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260822-photo-index" />
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell">
@@ -130,6 +130,9 @@
       </button>
       <p id="lightbox-caption" class="lightbox-caption"></p>
     </div>
-    <script src="/app.js?v=20260822-regression-pass"></script>
+    <script
+      src="/app.js"
+      onerror="this.onerror=null; setTimeout(() => { this.src='/app.js?retry=1'; }, 750)"
+    ></script>
   </body>
 </html>

@@ -29,12 +29,23 @@ const supabase = createClient(
 
 async function getLobby(id) {
   const cached = lobbyCache.get(id);
-  if (cached && Date.now() - cached.loadedAt < lobbyCacheTtlMs)
-    return cached.lobby;
+  if (cached && Date.now() - cached.loadedAt < lobbyCacheTtlMs) {
+    const { data: version, error: versionError } = await supabase
+      .from("lobbies")
+      .select("updated_at")
+      .eq("id", id)
+      .maybeSingle();
+    if (!versionError && !version) {
+      lobbyCache.delete(id);
+      return null;
+    }
+    if (!versionError && version.updated_at === cached.updatedAt)
+      return cached.lobby;
+  }
 
   const { data, error } = await supabase
     .from("lobbies")
-    .select("state")
+    .select("state, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -42,19 +53,31 @@ async function getLobby(id) {
   const lobby = data?.state || null;
   if (lobby) {
     if (lobbyCache.size >= 100) lobbyCache.delete(lobbyCache.keys().next().value);
-    lobbyCache.set(id, { lobby, loadedAt: Date.now() });
+    lobbyCache.set(id, {
+      lobby,
+      loadedAt: Date.now(),
+      updatedAt: data.updated_at,
+    });
   }
   return lobby;
 }
 
 async function createLobby(lobby) {
-  const { error } = await supabase.from("lobbies").insert({
-    id: lobby.id,
-    state: lobby,
-    created_at: lobby.createdAt,
-  });
+  const { data, error } = await supabase
+    .from("lobbies")
+    .insert({
+      id: lobby.id,
+      state: lobby,
+      created_at: lobby.createdAt,
+    })
+    .select("updated_at")
+    .single();
   if (error) throw error;
-  lobbyCache.set(lobby.id, { lobby, loadedAt: Date.now() });
+  lobbyCache.set(lobby.id, {
+    lobby,
+    loadedAt: Date.now(),
+    updatedAt: data.updated_at,
+  });
 }
 
 async function patchLobby(lobby, patches) {
@@ -70,7 +93,10 @@ async function patchLobby(lobby, patches) {
     }
     throw error;
   }
-  lobbyCache.set(lobby.id, { lobby, loadedAt: Date.now() });
+  // Other Render requests may be handled by another process. Invalidating
+  // forces this process to reload the authoritative state, while updated_at
+  // validation makes other process-local caches notice the same write.
+  lobbyCache.delete(lobby.id);
 }
 
 function asyncRoute(handler) {
@@ -78,9 +104,17 @@ function asyncRoute(handler) {
 }
 function publicUrl(req) {
   const configuredUrl = process.env.PUBLIC_BASE_URL?.trim();
-  if (configuredUrl) return configuredUrl.replace(/\/$/, "");
+  if (configuredUrl) {
+    const url = new URL(configuredUrl);
+    if (url.hostname.endsWith(".onrender.com")) url.protocol = "https:";
+    return url.toString().replace(/\/$/, "");
+  }
 
-  return `${req.protocol}://${req.get("host")}`.replace(/\/$/, "");
+  const host = req.get("host");
+  const protocol = host?.split(":")[0].endsWith(".onrender.com")
+    ? "https"
+    : req.protocol;
+  return `${protocol}://${host}`.replace(/\/$/, "");
 }
 // Strip the host token before a lobby is sent to any client — it must only
 // ever leave the server once, in the creation response.
@@ -537,6 +571,7 @@ app.get("/api/lobbies/:id/qr", async (req, res, next) => {
       errorCorrectionLevel: "M",
     });
     res.set("Cache-Control", "no-store");
+    res.set("X-Join-URL", joinUrl);
     res.type("image/svg+xml").send(svg);
   } catch (error) {
     next(error);

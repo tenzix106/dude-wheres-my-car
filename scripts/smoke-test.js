@@ -92,6 +92,10 @@ try {
   const qr = await request(`/api/lobbies/${lobbyId}/qr`);
   assert.match(qr.response.headers.get("content-type"), /image\/svg\+xml/);
   assert.equal(qr.response.headers.get("cache-control"), "no-store");
+  assert.equal(
+    qr.response.headers.get("x-join-url"),
+    `${baseUrl}/lobby/${lobbyId}`,
+  );
   assert.match(qr.body, /^<svg/);
 
   await request(`/api/lobbies/${lobbyId}/join`, json({}), 400);
