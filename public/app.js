@@ -19,11 +19,21 @@ function applyTheme(isDark) {
   if (themeToggle)
     themeToggle.textContent = isDark ? "Light mode" : "Dark mode";
 }
-applyTheme(localStorage.getItem("theme") === "dark");
+let prefersDarkTheme = false;
+try {
+  prefersDarkTheme = localStorage.getItem("theme") === "dark";
+} catch {
+  // Storage may be unavailable inside an embedded QR scanner browser.
+}
+applyTheme(prefersDarkTheme);
 themeToggle?.addEventListener("click", () => {
   const isDark = document.documentElement.dataset.theme !== "dark";
   applyTheme(isDark);
-  localStorage.setItem("theme", isDark ? "dark" : "light");
+  try {
+    localStorage.setItem("theme", isDark ? "dark" : "light");
+  } catch {
+    // The theme still applies for the current page.
+  }
 });
 
 const escapeHtml = (value) =>
@@ -47,6 +57,7 @@ const marketplace = (url) => {
     return false;
   }
 };
+const fallbackVotedRounds = new Set();
 const listingAddress = (url) => {
   try {
     const parsed = new URL(url);
@@ -58,26 +69,47 @@ const listingAddress = (url) => {
     return url;
   }
 };
+let fallbackVoterId = "";
 function getVoterId() {
-  let id = localStorage.getItem("voterId");
+  let id = "";
+  try {
+    id = localStorage.getItem("voterId") || "";
+  } catch {
+    // QR scanner webviews can disable persistent browser storage.
+  }
 
   if (!id) {
-    id = crypto.randomUUID
-      ? crypto.randomUUID()
-      : `v-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-    localStorage.setItem("voterId", id);
+    id = fallbackVoterId ||
+      (globalThis.crypto?.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : `v-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    fallbackVoterId = id;
+    try {
+      localStorage.setItem("voterId", id);
+    } catch {
+      // Keep the stable in-memory fallback for this page session.
+    }
   }
 
   return id;
 }
 
 function hasVotedInRound(roundId) {
-  return localStorage.getItem(`voted:${lobbyId}:${roundId}`) === "yes";
+  if (fallbackVotedRounds.has(roundId)) return true;
+  try {
+    return localStorage.getItem(`voted:${lobbyId}:${roundId}`) === "yes";
+  } catch {
+    return false;
+  }
 }
 
 function markRoundVoted(roundId) {
-  localStorage.setItem(`voted:${lobbyId}:${roundId}`, "yes");
+  fallbackVotedRounds.add(roundId);
+  try {
+    localStorage.setItem(`voted:${lobbyId}:${roundId}`, "yes");
+  } catch {
+    // The database uniqueness constraint remains the source of truth.
+  }
 }
 const lightbox = document.querySelector("#lightbox");
 const lightboxImg = document.querySelector("#lightbox-img");
@@ -180,7 +212,7 @@ document.addEventListener("keydown", (event) => {
   else if (event.key === "Escape") closeLightbox();
 });
 const carFields = () =>
-  `<div class="car-link"><label>Car name <input class="car-name" required maxlength="80" placeholder="e.g. 2020 Mazda MX-5" /></label><label>Price <input class="car-price" maxlength="40" placeholder="Optional · e.g. RM 154,000" /></label><label>Listing link <input required type="url" placeholder="https://www.mudah.my/... or carlist.my/..." /></label><label class="image-picker">Showcase photos <input class="image-input" type="file" accept="image/*" multiple /></label><div class="paste-zone" tabindex="0" role="button">Click here, then paste an image</div><p class="image-help">Select or paste up to 8 images, then arrange them below.</p><div class="image-order" aria-live="polite"></div></div>`;
+  `<div class="car-link"><label>Car name <input class="car-name" required maxlength="80" placeholder="e.g. 2020 Mazda MX-5" /></label><label>Price <input class="car-price" maxlength="40" placeholder="Optional · e.g. RM 154,000" /></label><label>Listing link <input required type="url" placeholder="https://www.mudah.my/... or carlist.my/..." /></label><button type="button" class="preview-link secondary">Preview listing</button><div class="preview-slot preview-empty">Add a supported listing link to preview it.</div><label class="image-picker">Showcase photos <input class="image-input" type="file" accept="image/*" multiple /></label><div class="paste-zone" tabindex="0" role="button">Click here, then paste an image</div><p class="image-help">Select or paste up to 8 images, then arrange them below.</p><div class="image-order" aria-live="polite"></div></div>`;
 const roundFields = (number) =>
   `<fieldset class="round-fields"><legend>ROUND ${number}</legend><button type="button" class="remove-round secondary">Remove round</button><label>Round name <input class="round-name" maxlength="80" placeholder="Optional · defaults to Round ${number}" /></label><div class="link-grid">${carFields()}${carFields()}</div></fieldset>`;
 
@@ -195,9 +227,11 @@ function setupPage() {
       roundFields(rounds.children.length + 1),
     );
     bindImagePickers();
+    bindPreviews();
     bindRoundControls();
   });
   bindImagePickers();
+  bindPreviews();
   bindRoundControls();
   document.querySelector("#creator").addEventListener("submit", createLobby);
 }
@@ -234,24 +268,20 @@ function bindPreviews() {
     button.dataset.bound = "yes";
     button.addEventListener("click", () => {
       const container = button.closest(".car-link");
-      const url = container.querySelector("input").value.trim();
-      const preview = container.querySelector(".preview-empty");
+      const url = container.querySelector('input[type="url"]').value.trim();
+      const preview = container.querySelector(".preview-slot");
       if (!marketplace(url)) {
+        preview.className = "preview-slot preview-empty";
         preview.textContent = "Please use a full mudah.my or carlist.my link.";
         return;
       }
       const source = new URL(url).hostname.replace(/^www\./, "").split(".")[0];
-      preview.replaceWith(
-        Object.assign(document.createElement("div"), {
-          className: "listing-preview",
-          innerHTML: `<div class="listing-preview-head"><b></b><span>EXTERNAL LISTING</span></div><p class="listing-address"></p><p class="listing-preview-note">This marketplace keeps its listing on its own site. Open it to see photos and full details.</p><a target="_blank" rel="noopener">Open listing in a new tab ↗</a>`,
-        }),
-      );
-      const card = container.querySelector(".listing-preview");
-      card.querySelector("b").textContent =
+      preview.className = "preview-slot listing-preview";
+      preview.innerHTML = `<div class="listing-preview-head"><b></b><span>EXTERNAL LISTING</span></div><p class="listing-address"></p><p class="listing-preview-note">This marketplace keeps its listing on its own site. Open it to see photos and full details.</p><a target="_blank" rel="noopener">Open listing in a new tab ↗</a>`;
+      preview.querySelector("b").textContent =
         `${source[0].toUpperCase()}${source.slice(1)} listing`;
-      card.querySelector(".listing-address").textContent = listingAddress(url);
-      card.querySelector("a").href = url;
+      preview.querySelector(".listing-address").textContent = listingAddress(url);
+      preview.querySelector("a").href = url;
     });
   });
 }
@@ -459,7 +489,7 @@ function scoreBoard(round) {
     .map((car) => {
       const votes = round.votes[car.id] || 0;
       const pct = Math.round((votes / total) * 100);
-      return `<div class="score"><div><span>${escapeHtml(car.source)} listing</span><b>${pct}%</b></div><div class="bar"><i style="width:${pct}%"></i></div><small>${votes} votes</small></div>`;
+      return `<div class="score"><div><span>${escapeHtml(car.source)} listing</span><b>${pct}%</b></div><div class="bar"><i style="width:${pct}%"></i></div><small>${votes} vote${votes === 1 ? "" : "s"}</small></div>`;
     })
     .join("")}</div>`;
 }
@@ -527,6 +557,7 @@ async function post(url, body) {
   if (post.inFlight) return;
   post.inFlight = true;
   const previousMarkup = app.innerHTML;
+  const stateBefore = lobbyStateSignature();
   try {
     showLoading("Updating game");
     const headers = body ? { "Content-Type": "application/json" } : {};
@@ -541,10 +572,22 @@ async function post(url, body) {
       throw new Error(data.error || `Update failed (${response.status})`);
 
     lobby = data?.id ? data : lobby;
-    loadLobby.inFlight = false;
-    await loadLobby();
+    await refreshLobbyWhenAvailable();
   } catch (error) {
-    console.error("Game update failed:", error);
+    console.warn("Game update response was not received; reconciling:", error);
+    showLoading("Confirming game update");
+    let updateWasApplied = false;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+      const refreshed = await refreshLobbyWhenAvailable();
+      if (refreshed && lobbyStateSignature() !== stateBefore) {
+        updateWasApplied = true;
+        break;
+      }
+    }
+    if (updateWasApplied) return;
+
+    console.error("Game update failed after reconciliation:", error);
     app.innerHTML = previousMarkup;
     if (lobby) lobbyPage();
     const notice = document.createElement("p");
@@ -555,6 +598,23 @@ async function post(url, body) {
   } finally {
     post.inFlight = false;
   }
+}
+function lobbyStateSignature() {
+  if (!lobby) return "";
+  const round = lobby.rounds?.[lobby.currentRound];
+  return JSON.stringify({
+    status: lobby.status,
+    currentRound: lobby.currentRound,
+    phase: round?.phase,
+    showcase: round?.showcase,
+  });
+}
+async function refreshLobbyWhenAvailable() {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    if (!loadLobby.inFlight) return loadLobby();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
 }
 async function vote(roundId, carId) {
   const message = document.querySelector("#vote-message");
@@ -592,7 +652,7 @@ async function vote(roundId, carId) {
   await loadLobby();
 }
 async function loadLobby() {
-  if (loadLobby.inFlight) return;
+  if (loadLobby.inFlight) return false;
   loadLobby.inFlight = true;
   if (!hasRenderedLobby) showLoading();
   try {
@@ -606,7 +666,7 @@ async function loadLobby() {
         app.innerHTML =
           '<section class="intro"><h1>This lobby has driven away.</h1></section>';
         hasRenderedLobby = true;
-        return;
+        return true;
       }
       throw new Error(data.error || "Could not load the lobby.");
     }
@@ -624,18 +684,20 @@ async function loadLobby() {
     lobbyPage();
     hasRenderedLobby = true;
     syncLightboxToShowcase();
+    return true;
   } catch (error) {
     console.error("Lobby refresh failed:", error);
     if (!hasRenderedLobby) {
       app.innerHTML = `<section class="intro"><h1>Reconnecting to the lobby…</h1><p>${escapeHtml(error.message || "The server is temporarily unreachable.")}</p><button class="primary" id="retry-lobby">Try again</button></section>`;
       document.querySelector("#retry-lobby")?.addEventListener("click", loadLobby);
     }
+    return false;
   } finally {
     loadLobby.inFlight = false;
   }
 }
 async function joinLobby() {
-  if (isHost || sessionStorage.getItem(`joined:${lobbyId}`) || joinLobby.inFlight)
+  if (isHost || joinLobby.confirmed || joinLobby.inFlight)
     return;
 
   joinLobby.inFlight = true;
@@ -652,7 +714,12 @@ async function joinLobby() {
     if (!response.ok)
       throw new Error(data.error || `Join failed (${response.status})`);
 
-    sessionStorage.setItem(`joined:${lobbyId}`, "yes");
+    joinLobby.confirmed = true;
+    try {
+      sessionStorage.setItem(`joined:${lobbyId}`, "yes");
+    } catch {
+      // Registration is confirmed by the server; storage is optional.
+    }
     await loadLobby();
   } catch (error) {
     console.error("Could not join lobby; will retry:", error);

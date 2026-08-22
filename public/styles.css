@@ -971,12 +971,12 @@ footer p {
 }
 [data-theme="dark"] .image-input::file-selector-button,
 [data-theme="dark"] .image-input::-webkit-file-upload-button {
-  [data-theme="dark"] .image-thumb .thumb-index {
-    background: #0d1216;
-    color: #f2eee6;
-  }
   background: #0d1216;
   color: #f2eee6;
+}
+[data-theme="dark"] .image-thumb .thumb-index {
+  background: var(--lime);
+  color: #0d1216;
 }
 [data-theme="dark"] .listing-preview {
   border-color: var(--ink);

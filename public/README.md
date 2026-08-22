@@ -36,6 +36,8 @@ Also apply `supabase/migrations/20260822010000_patch_lobby_state.sql`. It lets h
 
 To import lobbies from an existing `data/store.json`, run `npm run migrate:store` once after applying the migration. The running application no longer reads or writes that file.
 
+Run `npm run test:smoke` to exercise lobby creation, joining, host authorization, showcase navigation, voting, round progression, completion, and cleanup against the configured Supabase project.
+
 ## Before public launch
 
 - Add rate limiting, moderation, and a privacy notice. Host authorization now uses a real per-lobby token rather than a guessable link, but nothing here is hardened against abuse at scale yet.

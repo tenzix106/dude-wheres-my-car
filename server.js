@@ -136,6 +136,20 @@ async function getRoundVotes(lobbyId, roundId) {
   };
 }
 
+async function getLobbyPlayerCount(lobbyId) {
+  const { data, error } = await supabase
+    .from("lobbies")
+    .select("players:state->players")
+    .eq("id", lobbyId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Failed to refresh player count:", error);
+    return null;
+  }
+  return Number(data?.players);
+}
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.static(path.join(root, "public")));
 
@@ -239,13 +253,18 @@ app.get('/api/lobbies/:id', async (req, res) => {
 
     const result = sanitizeLobby(structuredClone(lobby));
 
-    await Promise.all(result.rounds.map(async (round) => {
-      const { votes, voterCount } = await getRoundVotes(result.id, round.id);
+    const [playerCount, ...roundVoteResults] = await Promise.all([
+      getLobbyPlayerCount(result.id),
+      ...result.rounds.map((round) => getRoundVotes(result.id, round.id)),
+    ]);
+    if (Number.isFinite(playerCount)) result.players = playerCount;
+    result.rounds.forEach((round, index) => {
+      const { votes, voterCount } = roundVoteResults[index];
       round.votes = Object.fromEntries(
         round.cars.map((car) => [car.id, votes[car.id] || 0]),
       );
       round.voterCount = voterCount;
-    }));
+    });
 
     if (req.query.sync === "1") {
       result.rounds.forEach((round) => {
@@ -387,9 +406,9 @@ app.post("/api/lobbies/:id/rounds/:roundId/vote", async (req, res) => {
       });
     }
 
-    const { votes } = await getRoundVotes(lobby.id, round.id);
-
-    res.json({ votes });
+    // The insert is the source of truth. Return immediately instead of making
+    // mobile clients wait for another Supabase round-trip to recount votes.
+    res.status(201).json({ ok: true });
   } catch (error) {
     console.error("Vote error:", error);
 
@@ -536,6 +555,10 @@ app.use((error, req, res, _next) => {
     .json({ error: error.publicMessage || "Could not update lobby." });
 });
 
-app.listen(port, "0.0.0.0", () =>
-  console.log(`Dude, where's my car? is running at http://localhost:${port}`),
-);
+export { app };
+
+if (path.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
+  app.listen(port, "0.0.0.0", () =>
+    console.log(`Dude, where's my car? is running at http://localhost:${port}`),
+  );
+}
