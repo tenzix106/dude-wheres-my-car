@@ -106,6 +106,42 @@ try {
   );
   assert.match(qr.body, /^<svg/);
 
+  const hostPage = await request(
+    `/lobby/${lobbyId}?host=${encodeURIComponent(hostToken)}`,
+  );
+  assert.doesNotMatch(hostPage.body, /globalThis\.__LOBBY_PLAYER_ID__="/);
+  let state = (await request(`/api/lobbies/${lobbyId}`)).body;
+  assert.equal(state.players, 0);
+
+  const guestPage = await request(`/lobby/${lobbyId}`);
+  const guestCookie = (guestPage.response.headers.get("set-cookie") || "")
+    .split(";")[0];
+  assert.match(guestCookie, /^dwmac_player=/);
+  const navigationPlayerId = guestPage.body.match(
+    /__LOBBY_PLAYER_ID__="([a-zA-Z0-9-]+)"/,
+  )?.[1];
+  assert.ok(navigationPlayerId);
+  const repeatedGuestPage = await request(`/lobby/${lobbyId}`, {
+    headers: { Cookie: guestCookie },
+  });
+  assert.match(
+    repeatedGuestPage.body,
+    new RegExp(`__LOBBY_PLAYER_ID__="${navigationPlayerId}"`),
+  );
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const status = await request(
+      `/api/lobbies/${lobbyId}/join-status?playerId=${navigationPlayerId}`,
+    );
+    if (status.body.joined) break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  const navigationJoin = await request(
+    `/api/lobbies/${lobbyId}/join-status?playerId=${navigationPlayerId}`,
+  );
+  assert.equal(navigationJoin.body.joined, true);
+  state = (await request(`/api/lobbies/${lobbyId}`)).body;
+  assert.equal(state.players, 1);
+
   await request(`/api/lobbies/${lobbyId}/join`, json({}), 400);
   const joins = await Promise.all([
     request(`/api/lobbies/${lobbyId}/join`, json({ playerId: "smoke-player-a" })),
@@ -116,7 +152,7 @@ try {
     `/api/lobbies/${lobbyId}/join`,
     json({ playerId: "smoke-player-a" }),
   );
-  assert.equal(repeatedJoin.body.players, 2);
+  assert.equal(repeatedJoin.body.players, 3);
   const joinedStatus = await request(
     `/api/lobbies/${lobbyId}/join-status?playerId=smoke-player-a`,
   );
@@ -134,11 +170,11 @@ try {
   );
   await request(`/api/lobbies/${lobbyId}/start`, hostPost(hostToken, {}));
 
-  let state = (await request(`/api/lobbies/${lobbyId}`)).body;
+  state = (await request(`/api/lobbies/${lobbyId}`)).body;
   assert.equal(state.status, "playing");
   assert.equal(state.currentRound, 0);
   assert.equal(state.rounds[0].phase, "showcase");
-  assert.equal(state.players, 2);
+  assert.equal(state.players, 3);
 
   await request(
     `/api/lobbies/${lobbyId}/showcase`,
@@ -196,7 +232,7 @@ try {
   state = (await request(`/api/lobbies/${lobbyId}`)).body;
   // Voters are participants even if their separate mobile join request was
   // dropped, so the UI must never be able to render "1 of 0 players voted".
-  assert.equal(state.players, 3);
+  assert.equal(state.players, 4);
   assert.equal(state.rounds[0].votes["r1-c1"], 1);
   assert.equal(state.rounds[0].voterCount, 1);
 
@@ -225,6 +261,11 @@ try {
   assert.equal(state.status, "complete");
 
   await request("/api/lobbies/does-not-exist", {}, 404);
+  await request(
+    "/api/lobbies/does-not-exist/join",
+    json({ playerId: "not-a-player" }),
+    404,
+  );
   await request("/api/lobbies/does-not-exist/qr", {}, 404);
   console.log(`Smoke test passed for ${lobbyId}.`);
 } finally {

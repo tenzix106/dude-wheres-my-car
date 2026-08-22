@@ -118,6 +118,38 @@ async function patchLobby(lobby, patches) {
   lobbyCache.delete(lobby.id);
 }
 
+async function registerLobbyPlayer(lobbyId, playerId) {
+  const { data, error } = await supabase.rpc("register_lobby_player", {
+    p_lobby_id: lobbyId,
+    p_player_id: playerId,
+  });
+
+  if (!error) {
+    lobbyCache.delete(lobbyId);
+    if (data === null) return null;
+    return Number(data);
+  }
+
+  // Keep deployments functional while the new migration is being applied.
+  // The RPC path is the concurrency-safe source of truth once available.
+  if (error.code !== "PGRST202") throw error;
+
+  const lobby = await getLobby(lobbyId);
+  if (!lobby) return null;
+  if (!Array.isArray(lobby.playerIds))
+    lobby.playerIds = Array.from(
+      { length: Number(lobby.players) || 0 },
+      (_, index) => `legacy-${index + 1}`,
+    );
+  if (!lobby.playerIds.includes(playerId)) lobby.playerIds.push(playerId);
+  lobby.players = lobby.playerIds.length;
+  await patchLobby(lobby, [
+    { path: ["playerIds"], value: lobby.playerIds },
+    { path: ["players"], value: lobby.players },
+  ]);
+  return lobby.players;
+}
+
 function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
@@ -352,23 +384,13 @@ app.get('/api/lobbies/:id', async (req, res) => {
 });
 
 app.post("/api/lobbies/:id/join", asyncRoute(async (req, res) => {
-  const lobby = await getLobby(req.params.id);
-  if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   const playerId = String(req.body?.playerId || "").trim();
   if (!playerId || playerId.length > 120)
     return res.status(400).json({ error: "A player ID is required." });
-  if (!Array.isArray(lobby.playerIds))
-    lobby.playerIds = Array.from(
-      { length: Number(lobby.players) || 0 },
-      (_, index) => `legacy-${index + 1}`,
-    );
-  if (!lobby.playerIds.includes(playerId)) lobby.playerIds.push(playerId);
-  lobby.players = lobby.playerIds.length;
-  await patchLobby(lobby, [
-    { path: ["playerIds"], value: lobby.playerIds },
-    { path: ["players"], value: lobby.players },
-  ]);
-  res.json({ players: lobby.players });
+  const players = await registerLobbyPlayer(req.params.id, playerId);
+  if (players === null)
+    return res.status(404).json({ error: "Lobby not found" });
+  res.json({ players });
 }));
 
 app.get("/api/lobbies/:id/join-status", asyncRoute(async (req, res) => {
@@ -676,7 +698,50 @@ app.get("/api/lobbies/:id/qr", async (req, res, next) => {
   }
 });
 
-app.get(["/lobby/:id", "/"], (_req, res) =>
+app.get("/lobby/:id", (req, res) => {
+  // iOS camera and in-app browser views can render the navigation while
+  // dropping subsequent JavaScript POST requests. Register the guest from the
+  // page request itself, which must reach this server for the page to exist.
+  if (req.method === "GET" && !req.query.host) {
+    const cookieName = "dwmac_player";
+    const cookieHeader = req.get("cookie") || "";
+    const encodedCookie = cookieHeader
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${cookieName}=`))
+      ?.slice(cookieName.length + 1);
+    let playerId = "";
+    try {
+      playerId = decodeURIComponent(encodedCookie || "");
+    } catch {
+      // Replace malformed cookies with a valid server-generated identity.
+    }
+    if (!/^[a-zA-Z0-9-]{1,120}$/.test(playerId))
+      playerId = `p-${crypto.randomUUID()}`;
+
+    res.cookie(cookieName, playerId, {
+      httpOnly: true,
+      maxAge: 365 * 24 * 60 * 60 * 1000,
+      path: "/",
+      sameSite: "lax",
+      secure: req.secure,
+    });
+    const registration = registerLobbyPlayer(req.params.id, playerId);
+    const playerBootstrap = `<script>globalThis.__LOBBY_PLAYER_ID__=${JSON.stringify(playerId)};</script>`;
+    res
+      .set("Cache-Control", "no-store")
+      .type("html")
+      .send(clientHtml.replace("<script>", `${playerBootstrap}<script>`));
+    void registration.catch((error) =>
+      console.error(`Navigation join for ${req.params.id} failed:`, error),
+    );
+    return;
+  }
+
+  res.set("Cache-Control", "no-store").type("html").send(clientHtml);
+});
+
+app.get("/", (_req, res) =>
   res
     .set("Cache-Control", "no-store")
     .type("html")

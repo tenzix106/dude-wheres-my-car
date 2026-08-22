@@ -34,6 +34,8 @@ Apply `supabase/migrations/20260822000000_create_lobbies.sql` to the Supabase pr
 
 Also apply `supabase/migrations/20260822010000_patch_lobby_state.sql`. It lets host controls and guest joins update only the changed lobby fields instead of uploading the complete image-heavy lobby document on every action.
 
+Finally, apply `supabase/migrations/20260823000000_register_lobby_player.sql`. It registers QR and mobile-navigation guests atomically, preventing simultaneous phone joins from overwriting one another.
+
 To import lobbies from an existing `data/store.json`, run `npm run migrate:store` once after applying the migration. The running application no longer reads or writes that file.
 
 Run `npm run test:smoke` to exercise lobby creation, joining, host authorization, showcase navigation, voting, round progression, completion, and cleanup against the configured Supabase project.

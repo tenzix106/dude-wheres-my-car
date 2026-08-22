@@ -71,6 +71,19 @@ const listingAddress = (url) => {
 };
 let fallbackVoterId = "";
 function getVoterId() {
+  const navigationPlayerId = String(
+    globalThis.__LOBBY_PLAYER_ID__ || "",
+  ).trim();
+  if (navigationPlayerId) {
+    fallbackVoterId = navigationPlayerId;
+    try {
+      localStorage.setItem("voterId", navigationPlayerId);
+    } catch {
+      // The server-provided identity remains stable for this page.
+    }
+    return navigationPlayerId;
+  }
+
   let id = "";
   try {
     id = localStorage.getItem("voterId") || "";
