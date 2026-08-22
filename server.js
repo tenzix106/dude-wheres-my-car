@@ -8,6 +8,8 @@ import { createClient } from "@supabase/supabase-js";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = process.env.PORT || 3000;
+const lobbyCache = new Map();
+const lobbyCacheTtlMs = 5 * 60 * 1000;
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -22,6 +24,10 @@ const supabase = createClient(
 );
 
 async function getLobby(id) {
+  const cached = lobbyCache.get(id);
+  if (cached && Date.now() - cached.loadedAt < lobbyCacheTtlMs)
+    return cached.lobby;
+
   const { data, error } = await supabase
     .from("lobbies")
     .select("state")
@@ -29,7 +35,12 @@ async function getLobby(id) {
     .maybeSingle();
 
   if (error) throw error;
-  return data?.state || null;
+  const lobby = data?.state || null;
+  if (lobby) {
+    if (lobbyCache.size >= 100) lobbyCache.delete(lobbyCache.keys().next().value);
+    lobbyCache.set(id, { lobby, loadedAt: Date.now() });
+  }
+  return lobby;
 }
 
 async function createLobby(lobby) {
@@ -39,6 +50,7 @@ async function createLobby(lobby) {
     created_at: lobby.createdAt,
   });
   if (error) throw error;
+  lobbyCache.set(lobby.id, { lobby, loadedAt: Date.now() });
 }
 
 async function saveLobby(lobby) {
@@ -51,6 +63,7 @@ async function saveLobby(lobby) {
 
   if (error) throw error;
   if (!data) throw new Error(`Lobby ${lobby.id} no longer exists.`);
+  lobbyCache.set(lobby.id, { lobby, loadedAt: Date.now() });
 }
 
 function asyncRoute(handler) {

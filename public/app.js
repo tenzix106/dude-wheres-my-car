@@ -524,15 +524,37 @@ function lobbyPage() {
   }
 }
 async function post(url, body) {
-  showLoading("Updating game");
-  const headers = body ? { "Content-Type": "application/json" } : {};
-  if (hostToken) headers["X-Host-Token"] = hostToken;
-  await fetch(url, {
-    method: "POST",
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  await loadLobby();
+  if (post.inFlight) return;
+  post.inFlight = true;
+  const previousMarkup = app.innerHTML;
+  try {
+    showLoading("Updating game");
+    const headers = body ? { "Content-Type": "application/json" } : {};
+    if (hostToken) headers["X-Host-Token"] = hostToken;
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Error(data.error || `Update failed (${response.status})`);
+
+    lobby = data?.id ? data : lobby;
+    loadLobby.inFlight = false;
+    await loadLobby();
+  } catch (error) {
+    console.error("Game update failed:", error);
+    app.innerHTML = previousMarkup;
+    if (lobby) lobbyPage();
+    const notice = document.createElement("p");
+    notice.className = "action-error";
+    notice.setAttribute("role", "alert");
+    notice.textContent = `${error.message || "The server is temporarily unreachable."} Please try again.`;
+    app.prepend(notice);
+  } finally {
+    post.inFlight = false;
+  }
 }
 async function vote(roundId, carId) {
   const message = document.querySelector("#vote-message");
