@@ -358,6 +358,15 @@ app.post("/api/lobbies/:id/join", asyncRoute(async (req, res) => {
   res.json({ players: lobby.players });
 }));
 
+app.get("/api/lobbies/:id/join-status", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
+  if (!lobby) return res.status(404).json({ error: "Lobby not found" });
+  const playerId = String(req.query?.playerId || "").trim();
+  if (!playerId || playerId.length > 120)
+    return res.status(400).json({ error: "A player ID is required." });
+  res.json({ joined: lobby.playerIds?.includes(playerId) || false });
+}));
+
 app.post("/api/lobbies/:id/start", asyncRoute(async (req, res) => {
   const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
@@ -471,6 +480,21 @@ app.post("/api/lobbies/:id/rounds/:roundId/vote", async (req, res) => {
   }
 });
 
+app.get("/api/lobbies/:id/rounds/:roundId/vote-status", asyncRoute(async (req, res) => {
+  const voterId = String(req.query?.voterId || "").trim();
+  if (!voterId || voterId.length > 120)
+    return res.status(400).json({ error: "Missing voter id" });
+  const { data, error } = await supabase
+    .from("votes")
+    .select("car_id")
+    .eq("lobby_id", req.params.id)
+    .eq("round_id", req.params.roundId)
+    .eq("voter_id", voterId)
+    .maybeSingle();
+  if (error) throw error;
+  res.json({ recorded: Boolean(data), carId: data?.car_id || null });
+}));
+
 function currentShowcase(lobby) {
   const round = lobby?.rounds[lobby.currentRound];
   if (round) {
@@ -482,6 +506,48 @@ function currentShowcase(lobby) {
   }
   return round;
 }
+app.post("/api/lobbies/:id/showcase", asyncRoute(async (req, res) => {
+  const lobby = await getLobby(req.params.id);
+  if (!lobby) return res.status(404).json({ error: "Lobby not found" });
+  if (!requireHost(req, res, lobby)) return;
+
+  const round = currentShowcase(lobby);
+  if (!round || round.id !== req.body?.roundId)
+    return res.status(409).json({ error: "Showcase round is out of date." });
+
+  const phase = req.body?.phase;
+  const carIndex = Number(req.body?.carIndex);
+  const imageIndex = Number(req.body?.imageIndex);
+  if (!['showcase', 'voting'].includes(phase))
+    return res.status(400).json({ error: "Invalid showcase phase." });
+  if (!Number.isInteger(carIndex) || carIndex < 0 || carIndex >= round.cars.length)
+    return res.status(400).json({ error: "Invalid showcase car." });
+
+  const images = round.cars[carIndex].images || [];
+  const maximumImageIndex = Math.max(images.length - 1, 0);
+  if (
+    !Number.isInteger(imageIndex) ||
+    imageIndex < 0 ||
+    imageIndex > maximumImageIndex
+  )
+    return res.status(400).json({ error: "Invalid showcase image." });
+  if (phase === "voting" && carIndex !== round.cars.length - 1)
+    return res.status(400).json({ error: "Show every car before voting." });
+
+  round.phase = phase;
+  round.showcase = { carIndex, imageIndex };
+  await patchLobby(lobby, [
+    {
+      path: ["rounds", String(lobby.currentRound), "showcase"],
+      value: round.showcase,
+    },
+    {
+      path: ["rounds", String(lobby.currentRound), "phase"],
+      value: round.phase,
+    },
+  ]);
+  res.json({ ok: true });
+}));
 app.post("/api/lobbies/:id/showcase/image", asyncRoute(async (req, res) => {
   const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });

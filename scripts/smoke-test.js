@@ -45,6 +45,8 @@ const json = (body, headers = {}) => ({
 });
 
 const hostPost = (token, body) => json(body, { "X-Host-Token": token });
+const showcasePost = (token, roundId, phase, carIndex, imageIndex = 0) =>
+  hostPost(token, { roundId, phase, carIndex, imageIndex });
 
 try {
   const appPage = await request("/");
@@ -115,6 +117,14 @@ try {
     json({ playerId: "smoke-player-a" }),
   );
   assert.equal(repeatedJoin.body.players, 2);
+  const joinedStatus = await request(
+    `/api/lobbies/${lobbyId}/join-status?playerId=smoke-player-a`,
+  );
+  assert.equal(joinedStatus.body.joined, true);
+  const missingJoinStatus = await request(
+    `/api/lobbies/${lobbyId}/join-status?playerId=not-joined`,
+  );
+  assert.equal(missingJoinStatus.body.joined, false);
 
   await request(`/api/lobbies/${lobbyId}/start`, json({}), 403);
   await request(
@@ -131,26 +141,32 @@ try {
   assert.equal(state.players, 2);
 
   await request(
-    `/api/lobbies/${lobbyId}/showcase/image`,
-    hostPost(hostToken, {}),
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "wrong-round", "showcase", 0),
+    409,
   );
   await request(
-    `/api/lobbies/${lobbyId}/showcase/car/next`,
-    hostPost(hostToken, {}),
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "round-1", "showcase", 1),
   );
   state = (await request(`/api/lobbies/${lobbyId}`)).body;
   assert.equal(state.rounds[0].showcase.carIndex, 1);
   await request(
-    `/api/lobbies/${lobbyId}/showcase/car/previous`,
-    hostPost(hostToken, {}),
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "round-1", "showcase", 0),
   );
   await request(
-    `/api/lobbies/${lobbyId}/showcase/car`,
-    hostPost(hostToken, {}),
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "round-1", "showcase", 1),
   );
   await request(
-    `/api/lobbies/${lobbyId}/showcase/car`,
-    hostPost(hostToken, {}),
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "round-1", "voting", 1),
+  );
+  // Retrying an exact-state command must not advance anything twice.
+  await request(
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "round-1", "voting", 1),
   );
 
   await request(
@@ -168,6 +184,10 @@ try {
     json({ carId: "r1-c1", voterId: "smoke-voter-a" }),
     201,
   );
+  const voteStatus = await request(
+    `/api/lobbies/${lobbyId}/rounds/round-1/vote-status?voterId=smoke-voter-a`,
+  );
+  assert.deepEqual(voteStatus.body, { recorded: true, carId: "r1-c1" });
   await request(
     `/api/lobbies/${lobbyId}/rounds/round-1/vote`,
     json({ carId: "r1-c2", voterId: "smoke-voter-a" }),
@@ -182,20 +202,20 @@ try {
   assert.equal(state.currentRound, 1);
   assert.equal(state.rounds[1].phase, "showcase");
   await request(
-    `/api/lobbies/${lobbyId}/showcase/car/next`,
-    hostPost(hostToken, {}),
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "round-2", "showcase", 1),
   );
   await request(
-    `/api/lobbies/${lobbyId}/showcase/back`,
-    hostPost(hostToken, {}),
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "round-2", "showcase", 0),
   );
   await request(
-    `/api/lobbies/${lobbyId}/showcase/car`,
-    hostPost(hostToken, {}),
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "round-2", "showcase", 1),
   );
   await request(
-    `/api/lobbies/${lobbyId}/showcase/car`,
-    hostPost(hostToken, {}),
+    `/api/lobbies/${lobbyId}/showcase`,
+    showcasePost(hostToken, "round-2", "voting", 1),
   );
   await request(`/api/lobbies/${lobbyId}/next`, hostPost(hostToken, {}));
   state = (await request(`/api/lobbies/${lobbyId}`)).body;

@@ -174,7 +174,7 @@ function closeLightbox() {
 lightboxPrevBtn.addEventListener("click", () => {
   if (lightboxIndex > 0) {
     if (lightboxShowcase) {
-      post(`/api/lobbies/${lobby.id}/showcase/back`);
+      setShowcaseState({ imageIndex: lightboxIndex - 1 });
       return;
     }
     lightboxIndex -= 1;
@@ -184,7 +184,7 @@ lightboxPrevBtn.addEventListener("click", () => {
 lightboxNextBtn.addEventListener("click", () => {
   if (lightboxIndex < lightboxImages.length - 1) {
     if (lightboxShowcase) {
-      post(`/api/lobbies/${lobby.id}/showcase/image`);
+      setShowcaseState({ imageIndex: lightboxIndex + 1 });
       return;
     }
     lightboxIndex += 1;
@@ -193,11 +193,17 @@ lightboxNextBtn.addEventListener("click", () => {
 });
 lightboxCarPrevBtn.addEventListener("click", () => {
   if (lightboxShowcase && !lightboxCarPrevBtn.disabled)
-    post(`/api/lobbies/${lobby.id}/showcase/car/previous`);
+    setShowcaseState({
+      carIndex: lobby.rounds[lobby.currentRound].showcase.carIndex - 1,
+      imageIndex: 0,
+    });
 });
 lightboxCarNextBtn.addEventListener("click", () => {
   if (lightboxShowcase && !lightboxCarNextBtn.disabled)
-    post(`/api/lobbies/${lobby.id}/showcase/car/next`);
+    setShowcaseState({
+      carIndex: lobby.rounds[lobby.currentRound].showcase.carIndex + 1,
+      imageIndex: 0,
+    });
 });
 document
   .querySelector("#lightbox-close")
@@ -468,19 +474,43 @@ function showcasePage(round) {
     );
   document
     .querySelector("#showcase-back")
-    ?.addEventListener("click", () =>
-      post(`/api/lobbies/${lobby.id}/showcase/back`),
-    );
+    ?.addEventListener("click", () => {
+      if (state.imageIndex > 0)
+        setShowcaseState({ imageIndex: state.imageIndex - 1 });
+      else {
+        const previousCarIndex = Math.max(0, state.carIndex - 1);
+        const previousImages = round.cars[previousCarIndex].images || [];
+        setShowcaseState({
+          carIndex: previousCarIndex,
+          imageIndex: Math.max(previousImages.length - 1, 0),
+        });
+      }
+    });
   document
     .querySelector("#showcase-image")
     ?.addEventListener("click", () =>
-      post(`/api/lobbies/${lobby.id}/showcase/image`),
+      setShowcaseState({ imageIndex: state.imageIndex + 1 }),
     );
   document
     .querySelector("#showcase-car")
-    ?.addEventListener("click", () =>
-      post(`/api/lobbies/${lobby.id}/showcase/car`),
-    );
+    ?.addEventListener("click", () => {
+      if (finalCar) setShowcaseState({ phase: "voting" });
+      else
+        setShowcaseState({
+          carIndex: state.carIndex + 1,
+          imageIndex: 0,
+        });
+    });
+}
+function setShowcaseState(changes) {
+  const round = lobby.rounds[lobby.currentRound];
+  const state = round.showcase || { carIndex: 0, imageIndex: 0 };
+  return post(`/api/lobbies/${lobby.id}/showcase`, {
+    roundId: round.id,
+    phase: changes.phase || round.phase,
+    carIndex: changes.carIndex ?? state.carIndex,
+    imageIndex: changes.imageIndex ?? state.imageIndex,
+  });
 }
 function scoreBoard(round) {
   const total =
@@ -567,8 +597,8 @@ async function post(url, body) {
       headers,
       body: body ? JSON.stringify(body) : undefined,
     };
-    const response = url.endsWith("/start")
-      ? await fetchStartWithRetry(url, requestOptions)
+    const response = url.endsWith("/start") || url.endsWith("/showcase")
+      ? await fetchIdempotentWithRetry(url, requestOptions)
       : await fetch(url, requestOptions);
     const data = await response.json().catch(() => ({}));
     if (!response.ok)
@@ -602,19 +632,19 @@ async function post(url, body) {
     post.inFlight = false;
   }
 }
-async function fetchStartWithRetry(url, options) {
+async function fetchIdempotentWithRetry(url, options) {
   let lastError;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const response = await fetch(url, options);
       if (response.status < 500 || attempt === 2) return response;
-      lastError = new Error(`Start Game failed (${response.status})`);
+      lastError = new Error(`Game update failed (${response.status})`);
     } catch (error) {
       lastError = error;
     }
     await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
   }
-  throw lastError || new Error("Could not start the game.");
+  throw lastError || new Error("Could not update the game.");
 }
 function lobbyStateSignature() {
   if (!lobby) return "";
@@ -650,6 +680,7 @@ async function vote(roundId, carId) {
           carId,
           voterId: getVoterId(),
         }),
+        keepalive: true,
       },
     );
 
@@ -663,7 +694,19 @@ async function vote(roundId, carId) {
 
     message.textContent = "Vote recorded.";
   } catch (error) {
-    message.textContent = error.message;
+    const voterId = getVoterId();
+    const queued = sendBeaconJson(
+      `/api/lobbies/${lobby.id}/rounds/${roundId}/vote`,
+      { carId, voterId },
+    );
+    const confirmed = queued && await pollConfirmation(
+      `/api/lobbies/${lobby.id}/rounds/${roundId}/vote-status?voterId=${encodeURIComponent(voterId)}`,
+      (data) => data.recorded && data.carId === carId,
+    );
+    if (confirmed) {
+      markRoundVoted(roundId);
+      message.textContent = "Vote recorded.";
+    } else message.textContent = error.message;
   }
 
   await loadLobby();
@@ -725,6 +768,7 @@ async function joinLobby() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playerId: getVoterId() }),
+        keepalive: true,
       },
     );
     const data = await response.json().catch(() => ({}));
@@ -739,10 +783,45 @@ async function joinLobby() {
     }
     await loadLobby();
   } catch (error) {
-    console.error("Could not join lobby; will retry:", error);
+    const playerId = getVoterId();
+    const queued = sendBeaconJson(
+      `/api/lobbies/${encodeURIComponent(lobbyId)}/join`,
+      { playerId },
+    );
+    const confirmed = queued && await pollConfirmation(
+      `/api/lobbies/${encodeURIComponent(lobbyId)}/join-status?playerId=${encodeURIComponent(playerId)}`,
+      (data) => data.joined,
+    );
+    if (confirmed) {
+      joinLobby.confirmed = true;
+      await loadLobby();
+    } else console.error("Could not join lobby; will retry:", error);
   } finally {
     joinLobby.inFlight = false;
   }
+}
+function sendBeaconJson(url, body) {
+  if (typeof navigator.sendBeacon !== "function") return false;
+  try {
+    return navigator.sendBeacon(
+      url,
+      new Blob([JSON.stringify(body)], { type: "application/json" }),
+    );
+  } catch {
+    return false;
+  }
+}
+async function pollConfirmation(url, predicate) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (response.ok && predicate(await response.json())) return true;
+    } catch {
+      // The normal three-second loop will retry if confirmation also fails.
+    }
+  }
+  return false;
 }
 if (lobbyId) {
   void loadLobby();
