@@ -11,6 +11,10 @@ const port = process.env.PORT || 3000;
 const lobbyCache = new Map();
 const lobbyCacheTtlMs = 5 * 60 * 1000;
 
+// Render terminates HTTPS at its proxy. Trust one proxy hop so req.protocol
+// reflects X-Forwarded-Proto and QR codes contain the public HTTPS URL.
+app.set("trust proxy", 1);
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SECRET_KEY,
@@ -53,16 +57,12 @@ async function createLobby(lobby) {
   lobbyCache.set(lobby.id, { lobby, loadedAt: Date.now() });
 }
 
-async function saveLobby(lobby) {
-  const { data, error } = await supabase
-    .from("lobbies")
-    .update({ state: lobby, updated_at: new Date().toISOString() })
-    .eq("id", lobby.id)
-    .select("id")
-    .maybeSingle();
-
+async function patchLobby(lobby, patches) {
+  const { error } = await supabase.rpc("patch_lobby_state", {
+    p_lobby_id: lobby.id,
+    p_patches: patches,
+  });
   if (error) throw error;
-  if (!data) throw new Error(`Lobby ${lobby.id} no longer exists.`);
   lobbyCache.set(lobby.id, { lobby, loadedAt: Date.now() });
 }
 
@@ -70,9 +70,10 @@ function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
 function publicUrl(req) {
-  return (
-    process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`
-  ).replace(/\/$/, "");
+  const configuredUrl = process.env.PUBLIC_BASE_URL?.trim();
+  if (configuredUrl) return configuredUrl.replace(/\/$/, "");
+
+  return `${req.protocol}://${req.get("host")}`.replace(/\/$/, "");
 }
 // Strip the host token before a lobby is sent to any client — it must only
 // ever leave the server once, in the creation response.
@@ -239,6 +240,15 @@ app.get('/api/lobbies/:id', async (req, res) => {
       round.voterCount = voterCount;
     }));
 
+    if (req.query.sync === "1") {
+      result.rounds.forEach((round) => {
+        round.cars.forEach((car) => {
+          delete car.images;
+          delete car.thumbnail;
+        });
+      });
+    }
+
     res.json(result);
   } catch (error) {
     console.error('Failed to load lobby:', error);
@@ -262,7 +272,10 @@ app.post("/api/lobbies/:id/join", asyncRoute(async (req, res) => {
     );
   if (!lobby.playerIds.includes(playerId)) lobby.playerIds.push(playerId);
   lobby.players = lobby.playerIds.length;
-  await saveLobby(lobby);
+  await patchLobby(lobby, [
+    { path: ["playerIds"], value: lobby.playerIds },
+    { path: ["players"], value: lobby.players },
+  ]);
   res.json({ players: lobby.players });
 }));
 
@@ -274,8 +287,13 @@ app.post("/api/lobbies/:id/start", asyncRoute(async (req, res) => {
   lobby.currentRound = 0;
   lobby.rounds[0].phase = "showcase";
   lobby.rounds[0].showcase = { carIndex: 0, imageIndex: 0 };
-  await saveLobby(lobby);
-  res.json(sanitizeLobby(lobby));
+  await patchLobby(lobby, [
+    { path: ["status"], value: lobby.status },
+    { path: ["currentRound"], value: lobby.currentRound },
+    { path: ["rounds", "0", "phase"], value: lobby.rounds[0].phase },
+    { path: ["rounds", "0", "showcase"], value: lobby.rounds[0].showcase },
+  ]);
+  res.json({ ok: true });
 }));
 
 app.post("/api/lobbies/:id/next", asyncRoute(async (req, res) => {
@@ -287,8 +305,19 @@ app.post("/api/lobbies/:id/next", asyncRoute(async (req, res) => {
     lobby.rounds[lobby.currentRound].phase = "showcase";
     lobby.rounds[lobby.currentRound].showcase = { carIndex: 0, imageIndex: 0 };
   } else lobby.status = "complete";
-  await saveLobby(lobby);
-  res.json(sanitizeLobby(lobby));
+  const roundIndex = String(lobby.currentRound);
+  const patches = [
+    { path: ["status"], value: lobby.status },
+    { path: ["currentRound"], value: lobby.currentRound },
+  ];
+  if (lobby.status === "playing") {
+    patches.push(
+      { path: ["rounds", roundIndex, "phase"], value: lobby.rounds[lobby.currentRound].phase },
+      { path: ["rounds", roundIndex, "showcase"], value: lobby.rounds[lobby.currentRound].showcase },
+    );
+  }
+  await patchLobby(lobby, patches);
+  res.json({ ok: true });
 }));
 
 app.post("/api/lobbies/:id/rounds/:roundId/vote", async (req, res) => {
@@ -384,8 +413,11 @@ app.post("/api/lobbies/:id/showcase/image", asyncRoute(async (req, res) => {
   const images = round.cars[round.showcase.carIndex].images || [];
   if (round.showcase.imageIndex < images.length - 1)
     round.showcase.imageIndex += 1;
-  await saveLobby(lobby);
-  res.json(round);
+  await patchLobby(lobby, [{
+    path: ["rounds", String(lobby.currentRound), "showcase"],
+    value: round.showcase,
+  }]);
+  res.json({ ok: true });
 }));
 app.post("/api/lobbies/:id/showcase/back", asyncRoute(async (req, res) => {
   const lobby = await getLobby(req.params.id);
@@ -402,8 +434,11 @@ app.post("/api/lobbies/:id/showcase/back", asyncRoute(async (req, res) => {
       0,
     );
   }
-  await saveLobby(lobby);
-  res.json(round);
+  await patchLobby(lobby, [{
+    path: ["rounds", String(lobby.currentRound), "showcase"],
+    value: round.showcase,
+  }]);
+  res.json({ ok: true });
 }));
 app.post("/api/lobbies/:id/showcase/car", asyncRoute(async (req, res) => {
   const lobby = await getLobby(req.params.id);
@@ -416,8 +451,17 @@ app.post("/api/lobbies/:id/showcase/car", asyncRoute(async (req, res) => {
     round.showcase.carIndex += 1;
     round.showcase.imageIndex = 0;
   } else round.phase = "voting";
-  await saveLobby(lobby);
-  res.json(round);
+  await patchLobby(lobby, [
+    {
+      path: ["rounds", String(lobby.currentRound), "showcase"],
+      value: round.showcase,
+    },
+    {
+      path: ["rounds", String(lobby.currentRound), "phase"],
+      value: round.phase,
+    },
+  ]);
+  res.json({ ok: true });
 }));
 
 app.post("/api/lobbies/:id/showcase/car/previous", asyncRoute(async (req, res) => {
@@ -431,8 +475,11 @@ app.post("/api/lobbies/:id/showcase/car/previous", asyncRoute(async (req, res) =
     round.showcase.carIndex -= 1;
     round.showcase.imageIndex = 0;
   }
-  await saveLobby(lobby);
-  res.json(round);
+  await patchLobby(lobby, [{
+    path: ["rounds", String(lobby.currentRound), "showcase"],
+    value: round.showcase,
+  }]);
+  res.json({ ok: true });
 }));
 
 app.post("/api/lobbies/:id/showcase/car/next", asyncRoute(async (req, res) => {
@@ -446,8 +493,11 @@ app.post("/api/lobbies/:id/showcase/car/next", asyncRoute(async (req, res) => {
     round.showcase.carIndex += 1;
     round.showcase.imageIndex = 0;
   }
-  await saveLobby(lobby);
-  res.json(round);
+  await patchLobby(lobby, [{
+    path: ["rounds", String(lobby.currentRound), "showcase"],
+    value: round.showcase,
+  }]);
+  res.json({ ok: true });
 }));
 
 app.get("/api/lobbies/:id/qr", async (req, res, next) => {
@@ -460,6 +510,7 @@ app.get("/api/lobbies/:id/qr", async (req, res, next) => {
       width: 360,
       errorCorrectionLevel: "M",
     });
+    res.set("Cache-Control", "no-store");
     res.type("image/svg+xml").send(svg);
   } catch (error) {
     next(error);

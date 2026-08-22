@@ -10,6 +10,8 @@ A shareable car-choice game with a host-controlled lobby. The host adds one or m
 
 For phone voting on the same Wi-Fi, open the site using the computer's LAN address (for example, `http://192.168.x.x:3000`), rather than `localhost`, before showing the QR code. For a real public game, deploy it and set `PUBLIC_BASE_URL=https://your-domain.example` so QR codes always contain your public HTTPS address.
 
+When hosted on Render, set `PUBLIC_BASE_URL=https://dude-wheres-my-car.onrender.com`. The server also trusts Render's HTTPS proxy headers, so generated QR links use HTTPS even when this variable is omitted.
+
 ## Host a game
 
 1. Visit the home page and name the game.
@@ -29,6 +31,8 @@ Photos are downscaled and re-encoded client-side (max 1600px wide, JPEG) before 
 ## Supabase setup
 
 Apply `supabase/migrations/20260822000000_create_lobbies.sql` to the Supabase project, then configure `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. The secret key must only be available to the Node server; never expose it in client-side code.
+
+Also apply `supabase/migrations/20260822010000_patch_lobby_state.sql`. It lets host controls and guest joins update only the changed lobby fields instead of uploading the complete image-heavy lobby document on every action.
 
 To import lobbies from an existing `data/store.json`, run `npm run migrate:store` once after applying the migration. The running application no longer reads or writes that file.
 

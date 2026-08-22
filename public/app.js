@@ -596,7 +596,10 @@ async function loadLobby() {
   loadLobby.inFlight = true;
   if (!hasRenderedLobby) showLoading();
   try {
-    const response = await fetch(`/api/lobbies/${encodeURIComponent(lobbyId)}`);
+    const syncQuery = hasRenderedLobby ? "?sync=1" : "";
+    const response = await fetch(
+      `/api/lobbies/${encodeURIComponent(lobbyId)}${syncQuery}`,
+    );
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (response.status === 404) {
@@ -606,6 +609,16 @@ async function loadLobby() {
         return;
       }
       throw new Error(data.error || "Could not load the lobby.");
+    }
+    if (lobby && hasRenderedLobby) {
+      data.rounds?.forEach((round) => {
+        const previousRound = lobby.rounds?.find((item) => item.id === round.id);
+        round.cars?.forEach((car) => {
+          const previousCar = previousRound?.cars?.find((item) => item.id === car.id);
+          car.images = previousCar?.images || [];
+          car.thumbnail = previousCar?.thumbnail || null;
+        });
+      });
     }
     lobby = data;
     lobbyPage();
