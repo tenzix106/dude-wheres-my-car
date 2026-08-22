@@ -1,11 +1,30 @@
 import express from "express";
 import QRCode from "qrcode";
+import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+const indexTemplate = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
+const clientScript = fs
+  .readFileSync(path.join(root, "public", "app.js"), "utf8")
+  .replace(/<\/script/gi, "<\\/script");
+const clientStyles = fs.readFileSync(
+  path.join(root, "public", "styles.css"),
+  "utf8",
+);
+const logoDataUrl = `data:image/svg+xml;base64,${Buffer.from(
+  fs.readFileSync(path.join(root, "public", "logo.svg"), "utf8"),
+).toString("base64")}`;
+const clientHtml = indexTemplate
+  .replace('<link rel="stylesheet" href="/styles.css" />', `<style>${clientStyles}</style>`)
+  .replaceAll('src="/logo.svg"', `src="${logoDataUrl}"`)
+  .replace(
+    /<script\s+src="\/app\.js"[\s\S]*?<\/script>/,
+    `<script>${clientScript}</script>`,
+  );
 const app = express();
 const port = process.env.PORT || 3000;
 const lobbyCache = new Map();
@@ -185,7 +204,7 @@ async function getLobbyPlayerCount(lobbyId) {
 }
 
 app.use(express.json({ limit: "50mb" }));
-app.use(express.static(path.join(root, "public")));
+app.use(express.static(path.join(root, "public"), { index: false }));
 
 app.post("/api/lobbies", asyncRoute(async (req, res) => {
   const requestedRounds = req.body?.rounds;
@@ -579,7 +598,10 @@ app.get("/api/lobbies/:id/qr", async (req, res, next) => {
 });
 
 app.get(["/lobby/:id", "/"], (_req, res) =>
-  res.sendFile(path.join(root, "public", "index.html")),
+  res
+    .set("Cache-Control", "no-store")
+    .type("html")
+    .send(clientHtml),
 );
 
 app.use((error, req, res, _next) => {

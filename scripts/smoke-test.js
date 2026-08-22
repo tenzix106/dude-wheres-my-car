@@ -47,6 +47,12 @@ const json = (body, headers = {}) => ({
 const hostPost = (token, body) => json(body, { "X-Host-Token": token });
 
 try {
+  const appPage = await request("/");
+  assert.match(appPage.body, /<style>[\s\S]*\.shell/);
+  assert.match(appPage.body, /<script>const app =/);
+  assert.doesNotMatch(appPage.body, /src="\/app\.js/);
+  assert.doesNotMatch(appPage.body, /src="\/logo\.svg/);
+
   await request("/api/lobbies", json({ rounds: [] }), 400);
 
   const tooManyRounds = Array.from({ length: 9 }, (_, index) => ({
