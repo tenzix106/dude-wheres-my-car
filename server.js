@@ -62,7 +62,14 @@ async function patchLobby(lobby, patches) {
     p_lobby_id: lobby.id,
     p_patches: patches,
   });
-  if (error) throw error;
+  if (error) {
+    if (error.code === "PGRST202") {
+      error.status = 503;
+      error.publicMessage =
+        "Supabase migration patch_lobby_state has not been applied.";
+    }
+    throw error;
+  }
   lobbyCache.set(lobby.id, { lobby, loadedAt: Date.now() });
 }
 
@@ -524,7 +531,9 @@ app.get(["/lobby/:id", "/"], (_req, res) =>
 app.use((error, req, res, _next) => {
   console.error(`${req.method} ${req.originalUrl} failed:`, error);
   if (res.headersSent) return;
-  res.status(500).json({ error: "Could not update lobby." });
+  res
+    .status(error.status || 500)
+    .json({ error: error.publicMessage || "Could not update lobby." });
 });
 
 app.listen(port, "0.0.0.0", () =>

@@ -57,3 +57,4 @@ revoke all on function public.patch_lobby_state(text, jsonb) from anon;
 revoke all on function public.patch_lobby_state(text, jsonb) from authenticated;
 grant execute on function public.patch_lobby_state(text, jsonb) to service_role;
 
+notify pgrst, 'reload schema';
