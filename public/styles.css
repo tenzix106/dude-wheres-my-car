@@ -30,7 +30,7 @@ body {
   font-family: "Space Grotesk", sans-serif;
 }
 .shell {
-  width: min(1120px, calc(100% - 40px));
+  width: min(1280px, calc(100% - 32px));
   margin: auto;
 }
 header {
@@ -624,7 +624,7 @@ footer,
     20px "DM Mono",
     monospace;
   line-height: 1.25;
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
 }
 .versus {
@@ -704,7 +704,7 @@ footer,
 .scores {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 40px;
 }
 .score > div:first-child {
   display: flex;
