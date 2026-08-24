@@ -286,7 +286,7 @@ const roundFields = (number) =>
   `<fieldset class="round-fields"><legend>Round ${number}</legend><button type="button" class="remove-round secondary">Remove round</button><label>Round name <input class="round-name" maxlength="80" placeholder="Optional · defaults to Round ${number}" /></label><div class="link-grid">${carFields()}${carFields()}</div></fieldset>`;
 
 function setupPage() {
-  document.title = "Create a game — Dude, where’s my car?";
+  document.title = "Create a game - Dude, where’s my car?";
   app.innerHTML = `<section class="intro setup-intro"><h1>Create a car showdown</h1><p>Add two cars per round, choose their showcase images, then invite everyone with a QR code.</p></section><form id="creator" class="creator"><label class="game-name">Game name <input id="game-name" required maxlength="80" value="Tonight’s car showdown" /></label><div id="rounds">${roundFields(1)}</div><div class="form-actions"><button type="button" id="add-round" class="secondary">Add another round</button><button type="submit" class="primary">Create lobby</button></div><p id="form-message" class="small"></p></form>`;
   document.querySelector("#add-round").addEventListener("click", () => {
     const rounds = document.querySelector("#rounds");
