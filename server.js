@@ -423,6 +423,25 @@ app.post("/api/lobbies/:id/next", asyncRoute(async (req, res) => {
   const lobby = await getLobby(req.params.id);
   if (!lobby) return res.status(404).json({ error: "Lobby not found" });
   if (!requireHost(req, res, lobby)) return;
+
+  // New clients include the round they intend to advance. That makes a retry
+  // safe when the write succeeded but the proxy closed the response: the
+  // repeated request confirms the already-applied transition instead of
+  // accidentally skipping another round.
+  const suppliedExpectedRound = req.body?.expectedRound;
+  const hasExpectedRound = suppliedExpectedRound !== undefined;
+  const expectedRound = Number(suppliedExpectedRound);
+  if (hasExpectedRound && (!Number.isInteger(expectedRound) || expectedRound < 0))
+    return res.status(400).json({ error: "Invalid expected round." });
+  if (hasExpectedRound) {
+    const transitionAlreadyApplied =
+      lobby.currentRound > expectedRound ||
+      (lobby.status === "complete" && lobby.currentRound === expectedRound);
+    if (transitionAlreadyApplied) return res.json({ ok: true });
+    if (lobby.status !== "playing" || lobby.currentRound !== expectedRound)
+      return res.status(409).json({ error: "Round transition is out of date." });
+  }
+
   if (lobby.currentRound < lobby.rounds.length - 1) {
     lobby.currentRound += 1;
     lobby.rounds[lobby.currentRound].phase = "showcase";

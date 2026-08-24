@@ -137,7 +137,12 @@ let lightboxTitle = "";
 let lightboxShowcase = false;
 function renderLightbox() {
   lightboxImg.src = lightboxImages[lightboxIndex];
-  // lightboxCaption.innerHTML = `<span class="lightbox-title">${lightboxTitle ? escapeHtml(lightboxTitle) : ""}</span><span class="lightbox-photo-count">Photo ${lightboxIndex + 1} of ${lightboxImages.length}</span>`;
+  const isLastImage = lightboxIndex === lightboxImages.length - 1;
+  lightboxCaption.textContent = isLastImage ? lightboxTitle : "";
+  lightboxCaption.hidden = !isLastImage || !lightboxTitle;
+  lightboxImg.alt = lightboxTitle
+    ? `${lightboxTitle}, photo ${lightboxIndex + 1} of ${lightboxImages.length}`
+    : `Photo ${lightboxIndex + 1} of ${lightboxImages.length}`;
   lightboxPrevBtn.disabled = lightboxIndex === 0;
   lightboxNextBtn.disabled = lightboxIndex === lightboxImages.length - 1;
   const state = lobby?.rounds[lobby.currentRound]?.showcase;
@@ -474,14 +479,17 @@ function showcasePage(round) {
     : car.thumbnail
       ? [car.thumbnail]
       : [];
-  app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · SHOWCASE</p><h1>${escapeHtml(round.title)}</h1><p>No voting yet.</p></section><section class="showcase"><div class="showcase-label"><b>CAR ${state.carIndex + 1} OF 2</b><span>${images.length ? `PHOTO ${state.imageIndex + 1} OF ${images.length}` : "LISTING OVERVIEW"}</span></div>${image ? `<img src="${image}" alt="${escapeHtml(car.name || car.source)} showcase photo ${state.imageIndex + 1}" />` : listingFrame(car)}${isHost ? `<div class="showcase-controls">${fullscreenSource.length ? '<button type="button" class="secondary fullscreen-btn" id="showcase-fullscreen">⛶ Fullscreen</button>' : ""}<button class="secondary" id="showcase-back" ${state.carIndex === 0 && state.imageIndex === 0 ? "disabled" : ""}>← Back</button>${state.imageIndex < images.length - 1 ? '<button class="secondary" id="showcase-image">Next image →</button>' : ""}<button class="primary" id="showcase-car">${finalCar ? "Start voting →" : "Show car 2 →"}</button></div>` : '<p class="wait-note">The host is guiding the showcase.</p>'}</section>`;
+  const isLastImage = Boolean(fullscreenSource.length) &&
+    (images.length ? state.imageIndex === images.length - 1 : true);
+  const carName = car.name || car.source;
+  app.innerHTML = `<section class="game-head"><p class="eyebrow">ROUND ${lobby.currentRound + 1} OF ${lobby.rounds.length} · SHOWCASE</p><h1>${escapeHtml(round.title)}</h1><p>No voting yet.</p></section><section class="showcase"><div class="showcase-label"><b>CAR ${state.carIndex + 1} OF 2</b><span>${images.length ? `PHOTO ${state.imageIndex + 1} OF ${images.length}` : "LISTING OVERVIEW"}</span></div><div class="showcase-media">${image ? `<img src="${image}" alt="${escapeHtml(carName)} showcase photo ${state.imageIndex + 1}" />` : listingFrame(car)}${isLastImage ? `<p class="showcase-car-name">${escapeHtml(carName)}</p>` : ""}</div>${isHost ? `<div class="showcase-controls">${fullscreenSource.length ? '<button type="button" class="secondary fullscreen-btn" id="showcase-fullscreen">⛶ Fullscreen</button>' : ""}<button class="secondary" id="showcase-back" ${state.carIndex === 0 && state.imageIndex === 0 ? "disabled" : ""}>← Back</button>${state.imageIndex < images.length - 1 ? '<button class="secondary" id="showcase-image">Next image →</button>' : ""}<button class="primary" id="showcase-car">${finalCar ? "Start voting →" : "Show car 2 →"}</button></div>` : '<p class="wait-note">The host is guiding the showcase.</p>'}</section>`;
   document
     .querySelector("#showcase-fullscreen")
     ?.addEventListener("click", () =>
       openLightbox(
         fullscreenSource,
         images.length ? state.imageIndex : 0,
-        car.name || car.source,
+        carName,
         true,
       ),
     );
@@ -593,7 +601,11 @@ function lobbyPage() {
       );
     document
       .querySelector("#next-round")
-      ?.addEventListener("click", () => post(`/api/lobbies/${lobby.id}/next`));
+      ?.addEventListener("click", () =>
+        post(`/api/lobbies/${lobby.id}/next`, {
+          expectedRound: lobby.currentRound,
+        }),
+      );
   }
 }
 async function post(url, body) {
@@ -610,7 +622,9 @@ async function post(url, body) {
       headers,
       body: body ? JSON.stringify(body) : undefined,
     };
-    const response = url.endsWith("/start") || url.endsWith("/showcase")
+    const response = url.endsWith("/start") ||
+      url.endsWith("/showcase") ||
+      url.endsWith("/next")
       ? await fetchIdempotentWithRetry(url, requestOptions)
       : await fetch(url, requestOptions);
     const data = await response.json().catch(() => ({}));
@@ -618,7 +632,9 @@ async function post(url, body) {
       throw new Error(data.error || `Update failed (${response.status})`);
 
     lobby = data?.id ? data : lobby;
-    await refreshLobbyWhenAvailable();
+    const refreshed = await refreshLobbyWhenAvailable();
+    if (!refreshed)
+      throw new Error("The game updated, but the latest state was not received.");
   } catch (error) {
     console.warn("Game update response was not received; reconciling:", error);
     showLoading("Confirming game update");
@@ -730,7 +746,7 @@ async function loadLobby() {
   if (!hasRenderedLobby) showLoading();
   try {
     const syncQuery = hasRenderedLobby ? "?sync=1" : "";
-    const response = await fetch(
+    const response = await fetchLobbyWithRetry(
       `/api/lobbies/${encodeURIComponent(lobbyId)}${syncQuery}`,
     );
     const data = await response.json().catch(() => ({}));
@@ -768,6 +784,20 @@ async function loadLobby() {
   } finally {
     loadLobby.inFlight = false;
   }
+}
+async function fetchLobbyWithRetry(url) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (response.status < 500 || attempt === 2) return response;
+      lastError = new Error(`Lobby refresh failed (${response.status})`);
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+  }
+  throw lastError || new Error("Could not refresh the lobby.");
 }
 async function joinLobby() {
   if (isHost || joinLobby.confirmed || joinLobby.inFlight)

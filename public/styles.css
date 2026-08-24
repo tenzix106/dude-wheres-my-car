@@ -573,12 +573,31 @@ footer,
     10px "DM Mono",
     monospace;
 }
-.showcase > img {
+.showcase-media {
+  position: relative;
+}
+.showcase-media > img {
   display: block;
   width: 100%;
   height: min(66vw, 680px);
   object-fit: contain;
   background: #182128;
+}
+.showcase-car-name {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  margin: 0;
+  padding: 10px 14px;
+  color: #f7f1e7;
+  background: rgba(13, 18, 22, 0.78);
+  font:
+    600 18px "Space Grotesk",
+    sans-serif;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 .showcase .listing-card {
   border: 0;
@@ -706,7 +725,7 @@ footer,
   grid-template-columns: 1fr 1fr;
   gap: 40px;
 }
-.score > div:first-child {
+.score > div:first-child:not(.car-details) {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
@@ -750,6 +769,16 @@ footer,
 .final-rounds h2 {
   font-size: 25px;
   letter-spacing: -0.04em;
+}
+.final-rounds .scores {
+  grid-template-rows: repeat(5, auto);
+  row-gap: 0;
+}
+.final-rounds .score {
+  display: grid;
+  grid-row: span 5;
+  grid-template-rows: subgrid;
+  row-gap: 0;
 }
 footer {
   display: flex;
@@ -869,7 +898,7 @@ footer p {
 }
 .lightbox-caption {
   position: absolute;
-  bottom: 22px;
+  bottom: 82px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -881,6 +910,10 @@ footer p {
   padding: 7px 14px;
   max-width: 90vw;
   text-align: center;
+  overflow-wrap: anywhere;
+}
+.lightbox-caption[hidden] {
+  display: none;
 }
 .lightbox-title,
 .lightbox-photo-count {
@@ -920,6 +953,14 @@ footer p {
   .scores {
     grid-template-columns: 1fr;
   }
+  .final-rounds .score {
+    display: block;
+    grid-row: auto;
+  }
+  .final-rounds .scores {
+    grid-template-rows: none;
+    row-gap: 40px;
+  }
   .form-actions,
   .showcase-controls {
     align-items: stretch;
@@ -948,8 +989,14 @@ footer p {
   .car-price {
     text-align: left;
   }
-  .showcase > img {
+  .showcase-media > img {
     height: 74vw;
+  }
+  .showcase-car-name {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    font-size: 15px;
   }
   .qr-card {
     box-shadow: 5px 5px 0 var(--ink);

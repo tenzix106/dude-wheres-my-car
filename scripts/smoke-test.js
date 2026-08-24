@@ -236,7 +236,16 @@ try {
   assert.equal(state.rounds[0].votes["r1-c1"], 1);
   assert.equal(state.rounds[0].voterCount, 1);
 
-  await request(`/api/lobbies/${lobbyId}/next`, hostPost(hostToken, {}));
+  await request(
+    `/api/lobbies/${lobbyId}/next`,
+    hostPost(hostToken, { expectedRound: 0 }),
+  );
+  // Retrying after a dropped response must acknowledge the first transition,
+  // not advance through another round.
+  await request(
+    `/api/lobbies/${lobbyId}/next`,
+    hostPost(hostToken, { expectedRound: 0 }),
+  );
   state = (await request(`/api/lobbies/${lobbyId}`)).body;
   assert.equal(state.currentRound, 1);
   assert.equal(state.rounds[1].phase, "showcase");
@@ -256,7 +265,14 @@ try {
     `/api/lobbies/${lobbyId}/showcase`,
     showcasePost(hostToken, "round-2", "voting", 1),
   );
-  await request(`/api/lobbies/${lobbyId}/next`, hostPost(hostToken, {}));
+  await request(
+    `/api/lobbies/${lobbyId}/next`,
+    hostPost(hostToken, { expectedRound: 1 }),
+  );
+  await request(
+    `/api/lobbies/${lobbyId}/next`,
+    hostPost(hostToken, { expectedRound: 1 }),
+  );
   state = (await request(`/api/lobbies/${lobbyId}`)).body;
   assert.equal(state.status, "complete");
 
