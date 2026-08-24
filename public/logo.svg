@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Dude, where's my car? logo">
-  <rect x="0" y="0" width="64" height="64" rx="14" fill="#172128"/>
-  <rect x="10" y="34" width="44" height="4" fill="#d3f36b"/>
-  <path d="M14 34 L18 22 Q19 19 23 19 L41 19 Q45 19 46 22 L50 34 Z" fill="#ff6548" stroke="#f7f1e7" stroke-width="2" stroke-linejoin="round"/>
-  <rect x="22" y="22" width="9" height="7" rx="1" fill="#172128"/>
-  <rect x="33" y="22" width="9" height="7" rx="1" fill="#172128"/>
-  <circle cx="22" cy="38" r="6" fill="#f7f1e7" stroke="#172128" stroke-width="2"/>
-  <circle cx="42" cy="38" r="6" fill="#f7f1e7" stroke="#172128" stroke-width="2"/>
-  <circle cx="22" cy="38" r="2" fill="#172128"/>
-  <circle cx="42" cy="38" r="2" fill="#172128"/>
+  <rect x="0" y="0" width="64" height="64" rx="12" fill="#151b3d"/>
+  <rect x="10" y="34" width="44" height="4" fill="#a78bfa"/>
+  <path d="M14 34 L18 22 Q19 19 23 19 L41 19 Q45 19 46 22 L50 34 Z" fill="#6c8eff" stroke="#e2e8f0" stroke-width="2" stroke-linejoin="round"/>
+  <rect x="22" y="22" width="9" height="7" rx="1" fill="#0a0e27"/>
+  <rect x="33" y="22" width="9" height="7" rx="1" fill="#0a0e27"/>
+  <circle cx="22" cy="38" r="6" fill="#e2e8f0" stroke="#0a0e27" stroke-width="2"/>
+  <circle cx="42" cy="38" r="6" fill="#e2e8f0" stroke="#0a0e27" stroke-width="2"/>
+  <circle cx="22" cy="38" r="2" fill="#0a0e27"/>
+  <circle cx="42" cy="38" r="2" fill="#0a0e27"/>
 </svg>

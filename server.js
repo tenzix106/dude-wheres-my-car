@@ -197,29 +197,39 @@ function sourceFor(url) {
   }
   return null;
 }
-async function getRoundVotes(lobbyId, roundId) {
-  const { data, error } = await supabase
-    .from('votes')
-    .select('car_id, voter_id')
-    .eq('lobby_id', lobbyId)
-    .eq('round_id', roundId);
+async function getLobbyVotes(lobbyId) {
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("votes")
+      .select("round_id, car_id, voter_id")
+      .eq("lobby_id", lobbyId)
+      .order("round_id")
+      .order("voter_id")
+      .range(offset, offset + pageSize - 1);
 
-  if (error) {
-    console.error('Failed to load votes:', error);
-    throw error;
+    if (error) {
+      console.error("Failed to load votes:", error);
+      throw error;
+    }
+    rows.push(...data);
+    if (data.length < pageSize) break;
   }
 
-  const votes = {};
-
-  for (const vote of data) {
-    votes[vote.car_id] = (votes[vote.car_id] || 0) + 1;
+  const votesByRound = new Map();
+  for (const vote of rows) {
+    let roundVotes = votesByRound.get(vote.round_id);
+    if (!roundVotes) {
+      roundVotes = { votes: {}, voterCount: 0, voterIds: [] };
+      votesByRound.set(vote.round_id, roundVotes);
+    }
+    roundVotes.votes[vote.car_id] =
+      (roundVotes.votes[vote.car_id] || 0) + 1;
+    roundVotes.voterCount += 1;
+    if (vote.voter_id) roundVotes.voterIds.push(vote.voter_id);
   }
-
-  return {
-    votes,
-    voterCount: data.length,
-    voterIds: data.map((vote) => vote.voter_id).filter(Boolean),
-  };
+  return votesByRound;
 }
 
 async function getLobbyPlayerCount(lobbyId) {
@@ -339,9 +349,9 @@ app.get('/api/lobbies/:id', async (req, res) => {
 
     const result = sanitizeLobby(structuredClone(lobby));
 
-    const [playerCount, ...roundVoteResults] = await Promise.all([
+    const [playerCount, votesByRound] = await Promise.all([
       getLobbyPlayerCount(result.id),
-      ...result.rounds.map((round) => getRoundVotes(result.id, round.id)),
+      getLobbyVotes(result.id),
     ]);
     // A successfully recorded vote is also proof that this person is taking
     // part in the lobby. Include voters in the public player count so a mobile
@@ -349,15 +359,18 @@ app.get('/api/lobbies/:id', async (req, res) => {
     const participatingPlayerIds = new Set(
       Array.isArray(lobby.playerIds) ? lobby.playerIds : [],
     );
-    roundVoteResults.forEach(({ voterIds }) => {
+    votesByRound.forEach(({ voterIds }) => {
       voterIds.forEach((voterId) => participatingPlayerIds.add(voterId));
     });
     result.players = Math.max(
       Number.isFinite(playerCount) ? playerCount : 0,
       participatingPlayerIds.size,
     );
-    result.rounds.forEach((round, index) => {
-      const { votes, voterCount } = roundVoteResults[index];
+    result.rounds.forEach((round) => {
+      const { votes, voterCount } = votesByRound.get(round.id) || {
+        votes: {},
+        voterCount: 0,
+      };
       round.votes = Object.fromEntries(
         round.cars.map((car) => [car.id, votes[car.id] || 0]),
       );
