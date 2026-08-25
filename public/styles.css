@@ -1,16 +1,16 @@
 :root {
-  --background: #fcfcfc;
-  --surface: #ffffff;
-  --primary: #1d4ed8;
-  --secondary: #2563eb;
-  --accent: #dc2626;
-  --text: #1e293b;
+  --background: #fefce8;
+  --surface: #fefce8;
+  --primary: #65a30d;
+  --secondary: #84cc16;
+  --accent: #f97316;
+  --text: #365314;
   --muted: color-mix(in srgb, var(--text) 68%, transparent);
   --border: color-mix(in srgb, var(--text) 18%, transparent);
   --border-strong: color-mix(in srgb, var(--text) 34%, transparent);
   --surface-muted: color-mix(in srgb, var(--surface) 94%, var(--primary));
   --focus: color-mix(in srgb, var(--primary) 30%, transparent);
-  --button-text: #ffffff;
+  --button-text: var(--background);
   --ink: var(--text);
   --paper: var(--background);
   --coral: var(--accent);
@@ -18,21 +18,22 @@
   --lime: var(--secondary);
   --line: var(--border);
   --surface-raised: var(--surface);
+  color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --background: #0a0e27;
-  --surface: #151b3d;
-  --primary: #6c8eff;
-  --secondary: #a78bfa;
-  --accent: #f472b6;
-  --text: #e2e8f0;
+  --background: #001e3c;
+  --surface: #0a2744;
+  --primary: #4fc3f7;
+  --secondary: #29b6f6;
+  --accent: #ffa726;
+  --text: #eceff1;
   --muted: color-mix(in srgb, var(--text) 70%, transparent);
   --border: color-mix(in srgb, var(--text) 18%, transparent);
   --border-strong: color-mix(in srgb, var(--text) 34%, transparent);
   --surface-muted: color-mix(in srgb, var(--surface) 88%, var(--primary));
   --focus: color-mix(in srgb, var(--primary) 36%, transparent);
-  --button-text: #0a0e27;
+  --button-text: var(--background);
   color-scheme: dark;
 }
 
@@ -804,10 +805,10 @@ header {
   left: 16px;
   margin: 0 auto;
   max-width: 760px;
-  border: 1px solid color-mix(in srgb, #e2e8f0 28%, transparent);
+  border: 1px solid color-mix(in srgb, #eceff1 28%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, #151b3d 92%, transparent);
-  color: #e2e8f0;
+  background: color-mix(in srgb, #0a2744 92%, transparent);
+  color: #eceff1;
   padding: 10px 14px;
   text-align: center;
   font-weight: 600;
@@ -1069,7 +1070,7 @@ footer p {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0a0e27;
+  background: #001e3c;
 }
 
 .lightbox[hidden] {
@@ -1087,10 +1088,10 @@ footer p {
 .lightbox-car-nav {
   position: absolute;
   z-index: 2;
-  border: 1px solid color-mix(in srgb, #e2e8f0 34%, transparent);
+  border: 1px solid color-mix(in srgb, #eceff1 34%, transparent);
   border-radius: 8px;
-  background: #151b3d;
-  color: #e2e8f0;
+  background: #0a2744;
+  color: #eceff1;
   cursor: pointer;
   font-weight: 600;
   transition:
@@ -1101,8 +1102,8 @@ footer p {
 .lightbox-close:hover,
 .lightbox-nav:hover:not(:disabled),
 .lightbox-car-nav:hover:not(:disabled) {
-  border-color: #6c8eff;
-  background: color-mix(in srgb, #151b3d 82%, #6c8eff);
+  border-color: #4fc3f7;
+  background: color-mix(in srgb, #0a2744 82%, #4fc3f7);
 }
 
 .lightbox-close {
@@ -1157,10 +1158,10 @@ footer p {
   width: fit-content;
   max-width: min(760px, calc(100vw - 32px));
   margin: 0 auto;
-  border: 1px solid color-mix(in srgb, #e2e8f0 28%, transparent);
+  border: 1px solid color-mix(in srgb, #eceff1 28%, transparent);
   border-radius: 8px;
-  background: #151b3d;
-  color: #e2e8f0;
+  background: #0a2744;
+  color: #eceff1;
   padding: 10px 14px;
   text-align: center;
   font-size: clamp(16px, 2.2vw, 24px);

@@ -42,7 +42,7 @@ function applyTheme(isDark) {
   document.documentElement.dataset.theme = isDark ? "dark" : "light";
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", isDark ? "#0a0e27" : "#fcfcfc");
+    ?.setAttribute("content", isDark ? "#001e3c" : "#fefce8");
   themeToggle?.setAttribute("aria-pressed", String(isDark));
   if (themeToggle)
     themeToggle.textContent = isDark ? "Light mode" : "Dark mode";
