@@ -121,9 +121,27 @@ header {
   color: var(--text);
 }
 
-.brand img {
+.brand-mark {
+  width: 48px;
+  height: 32px;
   flex: 0 0 auto;
-  border-radius: 8px;
+}
+
+.brand img {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.brand-logo-dark {
+  display: none !important;
+}
+
+[data-theme="dark"] .brand-logo-light {
+  display: none;
+}
+
+[data-theme="dark"] .brand-logo-dark {
+  display: block !important;
 }
 
 .theme-toggle,
@@ -1233,8 +1251,13 @@ footer p {
   }
 
   .brand img {
-    width: 32px;
-    height: 32px;
+    width: 42px;
+    height: 28px;
+  }
+
+  .brand-mark {
+    width: 42px;
+    height: 28px;
   }
 
   .theme-toggle {

@@ -41,6 +41,9 @@ const themeToggle = document.querySelector("#theme-toggle");
 function applyTheme(isDark) {
   document.documentElement.dataset.theme = isDark ? "dark" : "light";
   document
+    .querySelector("#app-icon")
+    ?.setAttribute("href", isDark ? "/logo-dark.svg" : "/logo-light.svg");
+  document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute("content", isDark ? "#001e3c" : "#fefce8");
   themeToggle?.setAttribute("aria-pressed", String(isDark));
